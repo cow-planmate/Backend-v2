@@ -24,3 +24,37 @@ hs_err_pid*
 replay_pid*
 
 project_ai/
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# VS Code
+.vscode/
+
+# Eclipse
+bin/
+.classpath
+.project
+.settings/
+.factorypath
+
+# Secrets
+src/main/resources/application-secret.yml
+
+# Logs
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Firebase service account key
+*-firebase-adminsdk-*.json
