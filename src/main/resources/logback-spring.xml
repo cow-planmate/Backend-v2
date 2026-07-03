@@ -1,6 +1,6 @@
 <configuration>
     <property name="LOG_DIR" value="${LOG_PATH:-logs}"/>
-    <property name="LOG_PATTERN" value="[%d{HH:mm:ss}] [%X{traceId}] %-5level %logger{36} - %msg%n"/>
+    <property name="LOG_PATTERN" value="[%d{HH:mm:ss}] [trace=%X{traceId} user=%X{userId:-}] %-5level %logger{36} - %msg%n"/>
 
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
