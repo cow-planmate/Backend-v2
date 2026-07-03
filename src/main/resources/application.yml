@@ -31,6 +31,18 @@ spring:
     enabled: true
     baseline-on-migrate: false
 
+  mail:
+    host: smtps.hiworks.com
+    port: 465
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
