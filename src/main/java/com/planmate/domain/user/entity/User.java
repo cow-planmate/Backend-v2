@@ -73,4 +73,8 @@ public class User extends BaseSoftDeleteEntity {
             this.userId = UuidCreator.getTimeOrderedEpoch();
         }
     }
+
+    public void changePassword(String newEncodedPassword) {
+        this.password = newEncodedPassword;
+    }
 }

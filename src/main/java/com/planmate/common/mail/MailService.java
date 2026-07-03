@@ -17,6 +17,10 @@ public class MailService {
 
     private static final String DEFAULT_FROM = "planMate <no_reply@planmate.site>";
 
+    private static final String PASSWORD_RESET_SUBJECT = "planMate 임시 비밀번호입니다.";
+    private static final String PASSWORD_RESET_HEADLINE = "임시 비밀번호를 발급해드렸어요";
+    private static final String PASSWORD_RESET_DESCRIPTION = "아래 임시 비밀번호로 로그인한 뒤, 마이페이지에서 원하는 비밀번호로 바로 변경해 주세요.";
+
     private final JavaMailSender mailSender;
 
     public void sendVerificationCodeMail(String to, String subject, String headline, String description, String code) {
@@ -34,6 +38,24 @@ public class MailService {
             mailSender.send(message);
         } catch (MessagingException exception) {
             throw new MailSendException("Failed to compose verification email", exception);
+        }
+    }
+
+    public void sendTemporaryPasswordMail(String to, String tempPassword) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
+
+            helper.setFrom(DEFAULT_FROM);
+            helper.setTo(to);
+            helper.setSubject(PASSWORD_RESET_SUBJECT);
+            helper.setText(
+                    buildHighlightedValueText(PASSWORD_RESET_HEADLINE, PASSWORD_RESET_DESCRIPTION, "임시 비밀번호", tempPassword, "보안 안내", "로그인 후 즉시 변경 권장", "임시 비밀번호는 타인과 공유하지 마시고, 로그인 후 바로 변경해 주세요.", "PASSWORD RESET"),
+                    buildHighlightedValueHtml(PASSWORD_RESET_HEADLINE, PASSWORD_RESET_DESCRIPTION, "임시 비밀번호", tempPassword, "보안 안내", "로그인 후 즉시 변경 권장", "임시 비밀번호는 타인과 공유하지 마시고, 로그인 후 바로 변경해 주세요.", "PASSWORD RESET"));
+
+            mailSender.send(message);
+        } catch (MessagingException exception) {
+            throw new MailSendException("Failed to compose temporary password email", exception);
         }
     }
 
