@@ -15,17 +15,19 @@ public class PlanAccessValidator {
     private final PlanMemberRepository planMemberRepository;
 
     // OWNER 또는 EDITOR — 플랜 조회·편집 공통 검증
-    public void validateMember(UUID planId, UUID userId) {
+    public boolean validateMember(UUID planId, UUID userId) {
         if (!planMemberRepository.existsByPlanPlanIdAndUserUserId(planId, userId)) {
             throw new PlanAccessDeniedException();
         }
+        return true;
     }
 
     // OWNER 전용 — 플랜 삭제, 멤버 추가/제거 등
-    public void validateOwner(UUID planId, UUID userId) {
+    public boolean validateOwner(UUID planId, UUID userId) {
         if (!planMemberRepository.existsByPlanPlanIdAndUserUserIdAndRole(
                 planId, userId, PlanMemberRole.OWNER)) {
             throw new PlanAccessDeniedException();
         }
+        return true;
     }
 }
