@@ -10,10 +10,11 @@ public final class SecurityWhitelist {
 
     public static final List<String> PATHS = List.of(
             "/api/auth/login",
+            "/api/auth/logout",
+            "/api/auth/token",
             "/api/auth/register",
             "/api/auth/email/**",
             "/api/auth/password/email",
-            "/api/auth/refresh",
             "/api/oauth/**",
             "/api/plan/share/**",
             "/actuator/health"

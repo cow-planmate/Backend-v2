@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
@@ -50,6 +51,10 @@ public class JwtTokenProvider {
 
     public String extractRole(String token) {
         return parseClaims(token).get("role", String.class);
+    }
+
+    public Duration getRefreshTokenExpiry() {
+        return Duration.ofSeconds(refreshTokenExpirySeconds);
     }
 
     public boolean validateToken(String token) {
