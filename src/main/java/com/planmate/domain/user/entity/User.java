@@ -64,7 +64,8 @@ public class User extends BaseSoftDeleteEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
-    private UserRole role;
+    @Builder.Default
+    private UserRole role = UserRole.USER;
 
     @PrePersist
     void assignId() {

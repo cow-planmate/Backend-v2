@@ -2,6 +2,7 @@ package com.planmate.common.exception;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -30,6 +31,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(ErrorCode.INVALID_INPUT.getHttpStatus())
                 .body(ErrorResponse.of(ErrorCode.INVALID_INPUT, message));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleMessageNotReadableException(HttpMessageNotReadableException e) {
+        // JSON 파싱 실패, enum에 정의되지 않은 값 등 - Bean Validation 이전 단계(역직렬화)에서 발생
+        log.warn("HttpMessageNotReadableException: {}", e.getMessage());
+        return ResponseEntity
+                .status(ErrorCode.INVALID_INPUT.getHttpStatus())
+                .body(ErrorResponse.of(ErrorCode.INVALID_INPUT));
     }
 
     @ExceptionHandler(Exception.class)

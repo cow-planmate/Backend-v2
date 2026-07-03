@@ -12,7 +12,7 @@ import java.util.UUID;
 public interface UserRepository extends JpaRepository<User, UUID> {
 
     // LOCAL 로그인: LOWER(email) 인덱스와 일치하도록 @Query 사용
-    // 활용 인덱스: uk_users_local_email ON (LOWER(email)) WHERE provider='LOCAL' AND deleted_at IS NULL
+    // 활용 인덱스: uk_users_email ON (LOWER(email)) WHERE deleted_at IS NULL (provider 무관 전체 유니크로 확장됨)
     // @SQLRestriction이 deleted_at IS NULL 자동 삽입
     @Query("SELECT u FROM User u WHERE LOWER(u.email) = LOWER(:email) AND u.provider = 'LOCAL'")
     Optional<User> findLocalByEmail(@Param("email") String email);
@@ -36,5 +36,14 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     // LOCAL 이메일 중복 확인
     // @SQLRestriction 자동 삽입 → 탈퇴 후 동일 이메일 재가입 가능
-    boolean existsByEmailAndProvider(String email, UserProvider provider);
+    // LOWER() 명시 — uk_users_email 인덱스가 LOWER(email) 기준이라 파생 쿼리(대소문자 구분)로 두면 어긋남
+    // (04_기능/인증/B_회원가입.md 7-2절 — existsByEmail과 동일한 이유로 수정, 아직 호출부 없어 회귀 위험 없음)
+    @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE LOWER(u.email) = LOWER(:email) AND u.provider = :provider")
+    boolean existsByEmailAndProvider(@Param("email") String email, @Param("provider") UserProvider provider);
+
+    // 회원가입 시 이메일 중복 확인 — provider 무관 전체 (04_기능/인증/B_회원가입.md 10-2절)
+    // 활용 인덱스: uk_users_email ON (LOWER(email)) WHERE deleted_at IS NULL
+    // LOWER() 명시 — 파생 쿼리(대소문자 구분)로 두면 인덱스의 대소문자 무시 정책과 어긋남
+    @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE LOWER(u.email) = LOWER(:email)")
+    boolean existsByEmail(@Param("email") String email);
 }

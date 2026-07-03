@@ -33,9 +33,10 @@ CREATE UNIQUE INDEX uk_users_nickname
     ON users (nickname)
     WHERE deleted_at IS NULL;
 
-CREATE UNIQUE INDEX uk_users_local_email
+-- 이메일 하나 = 계정 하나 (provider 무관, 원본 앱 로직에만 있던 정책을 DB 제약으로 승격 — 회원가입/OAuth 동시 요청 경합 방지)
+CREATE UNIQUE INDEX uk_users_email
     ON users (LOWER(email))
-    WHERE provider = 'LOCAL' AND deleted_at IS NULL;
+    WHERE deleted_at IS NULL;
 
 -- OAuth 중복 가입 방지 (탈퇴 후 전체 범위 — 기존 계정 복구 흐름 유도)
 CREATE UNIQUE INDEX uk_users_provider_provider_id

@@ -13,6 +13,7 @@ public final class SecurityWhitelist {
             "/api/auth/logout",
             "/api/auth/token",
             "/api/auth/register",
+            "/api/auth/register/nickname/verify",
             "/api/auth/email/**",
             "/api/auth/password/email",
             "/api/oauth/**",

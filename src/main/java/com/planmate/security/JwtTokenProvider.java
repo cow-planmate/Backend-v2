@@ -2,6 +2,7 @@ package com.planmate.security;
 
 import com.planmate.common.exception.domain.InvalidTokenException;
 import com.planmate.common.exception.domain.TokenExpiredException;
+import com.planmate.domain.auth.enums.EmailVerificationPurpose;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -30,6 +31,8 @@ public class JwtTokenProvider {
     @Value("${jwt.refresh-token-expiry-seconds}")
     private long refreshTokenExpirySeconds;
 
+    private static final long EMAIL_VERIFICATION_TOKEN_EXPIRY_SECONDS = 600; // 10분
+
     private SecretKey key;
 
     @PostConstruct
@@ -55,6 +58,26 @@ public class JwtTokenProvider {
 
     public Duration getRefreshTokenExpiry() {
         return Duration.ofSeconds(refreshTokenExpirySeconds);
+    }
+
+    public String createEmailVerificationToken(String email, EmailVerificationPurpose purpose) {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(email)
+                .claim("purpose", purpose.name())
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusSeconds(EMAIL_VERIFICATION_TOKEN_EXPIRY_SECONDS)))
+                .signWith(key)
+                .compact();
+    }
+
+    public String extractVerifiedEmail(String token, EmailVerificationPurpose expectedPurpose) {
+        Claims claims = parseClaims(token);
+        String purpose = claims.get("purpose", String.class);
+        if (purpose == null || !purpose.equals(expectedPurpose.name())) {
+            throw new InvalidTokenException();
+        }
+        return claims.getSubject();
     }
 
     public boolean validateToken(String token) {
