@@ -64,7 +64,6 @@ class EmailVerificationServiceTest {
     @Test
     @DisplayName("발송 성공 - RESET_PASSWORD, 가입된 이메일이면 코드 생성/Redis 저장/메일 발송")
     void sendVerificationCode_resetPassword_success() {
-        given(userRepository.existsByEmail(EMAIL)).willReturn(true);
         given(secureRandom.nextInt(900000)).willReturn(23456);
 
         emailVerificationService.sendVerificationCode(EMAIL, EmailVerificationPurpose.RESET_PASSWORD);
@@ -86,15 +85,16 @@ class EmailVerificationServiceTest {
     }
 
     @Test
-    @DisplayName("발송 - RESET_PASSWORD인데 미가입 이메일이면 계정 존재를 노출하지 않고 조용히 성공 처리(예외 없음, 코드/메일 생성 생략)")
-    void sendVerificationCode_resetPassword_emailNotFound_silentlySucceeds() {
-        given(userRepository.existsByEmail(EMAIL)).willReturn(false);
+    @DisplayName("발송 - RESET_PASSWORD인데 미가입 이메일이어도 타이밍 사이드채널 방지를 위해 동일하게 코드 생성/메일 발송")
+    void sendVerificationCode_resetPassword_emailNotFound_stillSendsCode() {
+        given(secureRandom.nextInt(900000)).willReturn(23456);
 
         assertThatCode(() -> emailVerificationService.sendVerificationCode(EMAIL, EmailVerificationPurpose.RESET_PASSWORD))
                 .doesNotThrowAnyException();
 
-        verify(emailVerificationRedisRepository, never()).saveCode(anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.any());
-        verify(mailService, never()).sendVerificationCodeMail(anyString(), anyString(), anyString(), anyString(), anyString());
+        verify(emailVerificationRedisRepository).saveCode(EMAIL, EmailVerificationPurpose.RESET_PASSWORD, 123456, Duration.ofMinutes(5));
+        verify(mailService).sendVerificationCodeMail(eq(EMAIL), anyString(), anyString(), anyString(), eq("123456"));
+        verify(userRepository, never()).existsByEmail(anyString());
     }
 
     @Test

@@ -100,17 +100,21 @@ class EmailVerificationControllerTest {
     }
 
     @Test
-    @DisplayName("인증코드 발송 - RESET_PASSWORD인데 미가입 이메일이면 계정 존재를 노출하지 않고 204(하이브리드 정책)")
-    void sendVerificationCode_resetPassword_emailNotFound_stillReturnsNoContent() throws Exception {
+    @DisplayName("인증코드 발송 - RESET_PASSWORD인데 미가입 이메일이어도 타이밍 사이드채널 방지를 위해 동일하게 204 + 코드 저장")
+    void sendVerificationCode_resetPassword_emailNotFound_stillSendsCode() throws Exception {
         String notFoundEmail = "email-verify-notfound-" + UUID.randomUUID() + "@example.com";
         EmailVerificationSendRequest request = new EmailVerificationSendRequest(notFoundEmail, EmailVerificationPurpose.RESET_PASSWORD);
 
-        mockMvc.perform(post("/api/auth/email/verification")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isNoContent());
+        try {
+            mockMvc.perform(post("/api/auth/email/verification")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isNoContent());
 
-        assertThat(emailVerificationRedisRepository.findCode(notFoundEmail, EmailVerificationPurpose.RESET_PASSWORD)).isEmpty();
+            assertThat(emailVerificationRedisRepository.findCode(notFoundEmail, EmailVerificationPurpose.RESET_PASSWORD)).isPresent();
+        } finally {
+            emailVerificationRedisRepository.delete(notFoundEmail, EmailVerificationPurpose.RESET_PASSWORD);
+        }
     }
 
     @Test

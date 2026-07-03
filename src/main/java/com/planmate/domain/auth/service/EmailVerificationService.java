@@ -38,16 +38,12 @@ public class EmailVerificationService {
 
     @Transactional(readOnly = true)
     public void sendVerificationCode(String email, EmailVerificationPurpose purpose) {
-        if (purpose == EmailVerificationPurpose.SIGN_UP) {
-            if (userRepository.existsByEmail(email)) {
-                throw new DuplicateEmailException();
-            }
-        } else if (purpose == EmailVerificationPurpose.RESET_PASSWORD) {
-            if (!userRepository.existsByEmail(email)) {
-                // 계정 존재 여부를 노출하지 않기 위해 조용히 종료 (C_이메일인증.md 9장 하이브리드 결정)
-                return;
-            }
+        if (purpose == EmailVerificationPurpose.SIGN_UP && userRepository.existsByEmail(email)) {
+            throw new DuplicateEmailException();
         }
+        // RESET_PASSWORD는 계정 존재 여부와 무관하게 항상 코드를 생성/발송한다.
+        // 존재 여부에 따라 분기해서 조기 반환하면 응답 시간 차이로 계정 존재가 새어나가는
+        // 타이밍 사이드채널이 생기므로(C_이메일인증_구현_포트폴리오.md 8장), 분기 자체를 두지 않는다.
 
         int code = secureRandom.nextInt(900000) + 100000;
         emailVerificationRedisRepository.saveCode(email, purpose, code, CODE_TTL);

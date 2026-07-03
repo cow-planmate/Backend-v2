@@ -80,6 +80,10 @@ public class JwtTokenProvider {
         return claims.getSubject();
     }
 
+    public boolean isAccessToken(String token) {
+        return "access".equals(parseClaims(token).get("typ", String.class));
+    }
+
     public boolean validateToken(String token) {
         try {
             Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
