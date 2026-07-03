@@ -70,11 +70,13 @@ CREATE TABLE preferred_theme (
 -- 4. user_preferred_theme
 -- ------------------------------------------------------------
 CREATE TABLE user_preferred_theme (
-    user_id            UUID      NOT NULL,
-    preferred_theme_id INT       NOT NULL,
-    created_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_preferred_theme_id BIGINT    GENERATED ALWAYS AS IDENTITY,
+    user_id                 UUID      NOT NULL,
+    preferred_theme_id      INT       NOT NULL,
+    created_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT pk_user_preferred_theme    PRIMARY KEY (user_id, preferred_theme_id),
+    CONSTRAINT pk_user_preferred_theme            PRIMARY KEY (user_preferred_theme_id),
+    CONSTRAINT uk_user_preferred_theme_user_theme UNIQUE (user_id, preferred_theme_id),
     CONSTRAINT fk_user_preferred_theme_user
         FOREIGN KEY (user_id)
             REFERENCES users (user_id)
