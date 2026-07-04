@@ -10,6 +10,7 @@ import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.enums.UserRole;
 import com.planmate.domain.user.repository.UserRepository;
 import com.planmate.security.JwtTokenProvider;
+import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,9 +19,13 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.crypto.SecretKey;
+import java.time.Instant;
+import java.util.Date;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -155,5 +160,24 @@ class PasswordControllerTest {
                         .content(objectMapper.writeValueAsString(new SendTempPasswordRequest("not-a-valid-token"))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_001"));
+    }
+
+    @Test
+    @DisplayName("임시 비밀번호 발송 실패 - verificationToken이 실제로 만료되면 401, AUTH_002(무효 토큰과 다른 코드)")
+    void sendTempPassword_fail_expiredToken() throws Exception {
+        SecretKey key = (SecretKey) ReflectionTestUtils.getField(jwtTokenProvider, "key");
+        String expiredToken = Jwts.builder()
+                .subject(testUser.getEmail())
+                .claim("purpose", EmailVerificationPurpose.RESET_PASSWORD.name())
+                .issuedAt(Date.from(Instant.now().minusSeconds(700)))
+                .expiration(Date.from(Instant.now().minusSeconds(100)))
+                .signWith(key)
+                .compact();
+
+        mockMvc.perform(post("/api/auth/password/email")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new SendTempPasswordRequest(expiredToken))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_002"));
     }
 }

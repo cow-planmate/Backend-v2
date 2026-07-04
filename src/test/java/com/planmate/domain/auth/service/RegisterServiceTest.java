@@ -3,6 +3,7 @@ package com.planmate.domain.auth.service;
 import com.planmate.common.exception.domain.DuplicateEmailException;
 import com.planmate.common.exception.domain.DuplicateNicknameException;
 import com.planmate.common.exception.domain.InvalidTokenException;
+import com.planmate.common.exception.domain.TokenExpiredException;
 import com.planmate.domain.auth.dto.NicknameVerificationResponse;
 import com.planmate.domain.auth.dto.RegisterRequest;
 import com.planmate.domain.auth.dto.RegisterResponse;
@@ -84,6 +85,19 @@ class RegisterServiceTest {
 
         assertThatThrownBy(() -> registerService.register(validRequest()))
                 .isInstanceOf(InvalidTokenException.class);
+
+        verify(userRepository, never()).existsByEmail(anyString());
+        verify(userRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("회원가입 실패 - signupToken 만료(무효와 별도 예외/에러코드로 전파됨 — 9장 표는 하나로 뭉쳐놨지만 실제로는 분리됨)")
+    void register_fail_expiredSignupToken() {
+        given(jwtTokenProvider.extractVerifiedEmail(SIGNUP_TOKEN, EmailVerificationPurpose.SIGN_UP))
+                .willThrow(new TokenExpiredException());
+
+        assertThatThrownBy(() -> registerService.register(validRequest()))
+                .isInstanceOf(TokenExpiredException.class);
 
         verify(userRepository, never()).existsByEmail(anyString());
         verify(userRepository, never()).save(org.mockito.ArgumentMatchers.any());

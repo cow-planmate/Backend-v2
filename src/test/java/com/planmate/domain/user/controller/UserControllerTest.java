@@ -312,6 +312,24 @@ class UserControllerTest {
     }
 
     @Test
+    @DisplayName("마이페이지 프로필 조회 성공 - SNS 가입 계정은 isSocialLogin이 실제 DB 기준으로 true(LOCAL 분기만 검증돼있던 것 보강)")
+    void getProfile_success_socialAccountRealDb() throws Exception {
+        User socialUser = userRepository.saveAndFlush(User.builder()
+                .provider(UserProvider.KAKAO)
+                .providerId("kakao-" + UUID.randomUUID())
+                .email("mypage-social-" + UUID.randomUUID() + "@example.com")
+                .nickname("mypage-social-" + UUID.randomUUID().toString().substring(0, 8))
+                .role(UserRole.USER)
+                .build());
+        String socialAccessToken = jwtTokenProvider.createAccessToken(socialUser.getUserId(), socialUser.getRole().name());
+
+        mockMvc.perform(get("/api/user/profile")
+                        .header("Authorization", "Bearer " + socialAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isSocialLogin").value(true));
+    }
+
+    @Test
     @DisplayName("마이페이지 프로필 조회 실패 - 인증 토큰 없으면 401")
     void getProfile_fail_noAuth() throws Exception {
         mockMvc.perform(get("/api/user/profile"))
@@ -424,6 +442,18 @@ class UserControllerTest {
                 .andExpect(status().isNoContent());
 
         assertThat(userRepository.findById(testUser.getUserId()).orElseThrow().getGender()).isEqualTo(Gender.OTHER);
+    }
+
+    @Test
+    @DisplayName("성별 변경 성공 - MALE도 DB에 실제로 반영됨(enum Converter 왕복 확인 — FEMALE/OTHER만 있고 MALE은 빠져있던 것 보강)")
+    void changeGender_success_male() throws Exception {
+        mockMvc.perform(patch("/api/user/gender")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ChangeGenderRequest(Gender.MALE))))
+                .andExpect(status().isNoContent());
+
+        assertThat(userRepository.findById(testUser.getUserId()).orElseThrow().getGender()).isEqualTo(Gender.MALE);
     }
 
     @Test

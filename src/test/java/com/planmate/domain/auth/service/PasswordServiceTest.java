@@ -2,6 +2,7 @@ package com.planmate.domain.auth.service;
 
 import com.planmate.common.exception.domain.InvalidTokenException;
 import com.planmate.common.exception.domain.PasswordMismatchException;
+import com.planmate.common.exception.domain.TokenExpiredException;
 import com.planmate.common.exception.domain.UserNotFoundException;
 import com.planmate.common.mail.MailService;
 import com.planmate.domain.auth.dto.ChangePasswordRequest;
@@ -161,6 +162,19 @@ class PasswordServiceTest {
 
         assertThatThrownBy(() -> passwordService.sendTempPassword("bad-token"))
                 .isInstanceOf(InvalidTokenException.class);
+
+        verify(userRepository, never()).findLocalByEmail(anyString());
+        verify(mailService, never()).sendTemporaryPasswordMail(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("sendTempPassword 실패 - verificationToken 만료(무효와 별도 예외/에러코드 — 9장 표가 별도 행으로 구분해둔 케이스)")
+    void sendTempPassword_fail_expiredToken() {
+        given(jwtTokenProvider.extractVerifiedEmail("expired-token", EmailVerificationPurpose.RESET_PASSWORD))
+                .willThrow(new TokenExpiredException());
+
+        assertThatThrownBy(() -> passwordService.sendTempPassword("expired-token"))
+                .isInstanceOf(TokenExpiredException.class);
 
         verify(userRepository, never()).findLocalByEmail(anyString());
         verify(mailService, never()).sendTemporaryPasswordMail(anyString(), anyString());

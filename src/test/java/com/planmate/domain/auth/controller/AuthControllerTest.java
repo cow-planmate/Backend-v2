@@ -9,6 +9,8 @@ import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.enums.UserRole;
 import com.planmate.domain.user.repository.UserRepository;
+import com.planmate.security.JwtTokenProvider;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -17,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +49,12 @@ class AuthControllerTest {
     private PasswordEncoder passwordEncoder;
     @Autowired
     private RefreshTokenRedisRepository refreshTokenRedisRepository;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private JwtTokenProvider jwtTokenProvider;
+    @Autowired
+    private EntityManager entityManager;
 
     private User testUser;
     private String issuedRefreshToken;
@@ -135,6 +144,36 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(new RefreshTokenRequest(issuedRefreshToken))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").exists());
+    }
+
+    @Test
+    @DisplayName("Access Token 재발급 성공 - 로그인 이후 관리자로 승격되면 재발급 토큰에 새 역할이 즉시 반영됨(매 재발급마다 최신 role 재조회)")
+    void reissue_success_reflectsRoleChangedSinceLogin() throws Exception {
+        issuedRefreshToken = "test-refresh-token-" + UUID.randomUUID();
+        refreshTokenRedisRepository.save(issuedRefreshToken, testUser.getUserId(), Duration.ofDays(1));
+
+        // JdbcTemplate은 JPA 영속성 컨텍스트를 거치지 않는 raw SQL이라, @BeforeEach의 save()로 생긴
+        // testUser의 INSERT가 아직 flush 안 된 상태면 이 UPDATE가 대상 행을 아예 못 찾는다 — 먼저 flush.
+        entityManager.flush();
+
+        // 로그인 이후(=이 refreshToken 발급 이후) 관리자로 승격된 상황을 실제 DB에 반영해서 재현
+        // (앱에 role 변경 API가 없어 관리자 도구/DB 직접 변경으로 일어나는 시나리오를 흉내낸 것)
+        jdbcTemplate.update("UPDATE users SET role = ? WHERE user_id = ?", "ADMIN", testUser.getUserId());
+
+        // testUser가 이미 1차 캐시에 관리 상태(role=USER)로 남아있으면 reissue()의 findById가
+        // 캐시된 객체를 그대로 반환해버리므로, 캐시를 비워 다음 조회가 실제로 DB에 SELECT를 태우게 한다
+        // (그룹 A 인증/마이페이지에서 만난 것과 같은 종류의 flush/clear 순서 문제).
+        entityManager.clear();
+
+        String responseBody = mockMvc.perform(post("/api/auth/token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RefreshTokenRequest(issuedRefreshToken))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").exists())
+                .andReturn().getResponse().getContentAsString();
+
+        String newAccessToken = objectMapper.readTree(responseBody).get("accessToken").asText();
+        assertThat(jwtTokenProvider.extractRole(newAccessToken)).isEqualTo("ADMIN");
     }
 
     @Test
