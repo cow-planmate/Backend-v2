@@ -77,4 +77,20 @@ public class User extends BaseSoftDeleteEntity {
     public void changePassword(String newEncodedPassword) {
         this.password = newEncodedPassword;
     }
+
+    public void changeNickname(String newNickname) {
+        this.nickname = newNickname;
+    }
+
+    public void changeBirthdate(LocalDate newBirthdate) {
+        this.birthdate = newBirthdate;
+    }
+
+    public void changeGender(Gender newGender) {
+        this.gender = newGender;
+    }
+
+    public void changeFcmToken(String newFcmToken) {
+        this.fcmToken = newFcmToken;
+    }
 }

@@ -1,5 +1,7 @@
 package com.planmate.domain.user.service;
 
+import com.planmate.common.exception.domain.DuplicateNicknameException;
+import com.planmate.common.exception.domain.PreferredThemeCategoryMismatchException;
 import com.planmate.common.exception.domain.PreferredThemeNotFoundException;
 import com.planmate.common.exception.domain.UserNotFoundException;
 import com.planmate.domain.plan.entity.Plan;
@@ -27,12 +29,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -210,6 +215,235 @@ class UserServiceTest {
         given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> userService.getProfile(USER_ID))
+                .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("changeNickname 성공 - 다른 사람이 안 쓰는 닉네임으로 변경")
+    void changeNickname_success() {
+        User user = mock(User.class);
+        given(user.getNickname()).willReturn("oldNickname");
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(userRepository.existsByNickname("newNickname")).willReturn(false);
+
+        userService.changeNickname(USER_ID, "newNickname");
+
+        verify(user).changeNickname("newNickname");
+    }
+
+    @Test
+    @DisplayName("changeNickname 성공 - 자기 자신의 현재 닉네임으로 재제출하면 중복 검사를 건너뜀(원본 버그 수정)")
+    void changeNickname_success_sameNicknameSkipsDuplicateCheck() {
+        User user = mock(User.class);
+        given(user.getNickname()).willReturn("sameNickname");
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        userService.changeNickname(USER_ID, "sameNickname");
+
+        verify(userRepository, never()).existsByNickname(anyString());
+        verify(user).changeNickname("sameNickname");
+    }
+
+    @Test
+    @DisplayName("changeNickname 실패 - userId로 유저를 찾을 수 없음")
+    void changeNickname_fail_userNotFound() {
+        given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.changeNickname(USER_ID, "newNickname"))
+                .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("changeNickname 실패 - 다른 사용자가 이미 쓰는 닉네임")
+    void changeNickname_fail_duplicateNickname() {
+        User user = mock(User.class);
+        given(user.getNickname()).willReturn("oldNickname");
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(userRepository.existsByNickname("takenNickname")).willReturn(true);
+
+        assertThatThrownBy(() -> userService.changeNickname(USER_ID, "takenNickname"))
+                .isInstanceOf(DuplicateNicknameException.class);
+
+        verify(user, never()).changeNickname(anyString());
+    }
+
+    @Test
+    @DisplayName("changeBirthdate 성공")
+    void changeBirthdate_success() {
+        User user = mock(User.class);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        LocalDate newBirthdate = LocalDate.of(2000, 1, 1);
+        userService.changeBirthdate(USER_ID, newBirthdate);
+
+        verify(user).changeBirthdate(newBirthdate);
+    }
+
+    @Test
+    @DisplayName("changeBirthdate 실패 - userId로 유저를 찾을 수 없음")
+    void changeBirthdate_fail_userNotFound() {
+        given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.changeBirthdate(USER_ID, LocalDate.of(2000, 1, 1)))
+                .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("changeGender 성공")
+    void changeGender_success() {
+        User user = mock(User.class);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        userService.changeGender(USER_ID, Gender.OTHER);
+
+        verify(user).changeGender(Gender.OTHER);
+    }
+
+    @Test
+    @DisplayName("changeGender 실패 - userId로 유저를 찾을 수 없음")
+    void changeGender_fail_userNotFound() {
+        given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.changeGender(USER_ID, Gender.MALE))
+                .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("changePreferredThemes 성공 - 단일 카테고리 부분 수정")
+    void changePreferredThemes_success_singleCategory() {
+        PreferredTheme museum = PreferredTheme.builder().preferredThemeId(1).preferredThemeName("박물관").category(PreferredThemeCategory.ATTRACTION).build();
+        PreferredTheme park = PreferredTheme.builder().preferredThemeId(2).preferredThemeName("공원").category(PreferredThemeCategory.ATTRACTION).build();
+        given(preferredThemeRepository.findAllById(List.of(1, 2))).willReturn(List.of(museum, park));
+        User user = mock(User.class);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        userService.changePreferredThemes(USER_ID, Map.of(PreferredThemeCategory.ATTRACTION, List.of(1, 2)));
+
+        verify(userPreferredThemeRepository).deleteByUserUserIdAndPreferredThemeCategory(USER_ID, PreferredThemeCategory.ATTRACTION);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<UserPreferredTheme>> captor = ArgumentCaptor.forClass(List.class);
+        verify(userPreferredThemeRepository).saveAll(captor.capture());
+        assertThat(captor.getValue()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("changePreferredThemes 성공 - 여러 카테고리 동시 수정, 언급 안 한 카테고리는 삭제 호출조차 안 됨")
+    void changePreferredThemes_success_multipleCategories() {
+        PreferredTheme museum = PreferredTheme.builder().preferredThemeId(1).preferredThemeName("박물관").category(PreferredThemeCategory.ATTRACTION).build();
+        PreferredTheme cafe = PreferredTheme.builder().preferredThemeId(3).preferredThemeName("카페").category(PreferredThemeCategory.RESTAURANT).build();
+        given(preferredThemeRepository.findAllById(anyList())).willReturn(List.of(museum, cafe));
+        User user = mock(User.class);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        userService.changePreferredThemes(USER_ID, Map.of(
+                PreferredThemeCategory.ATTRACTION, List.of(1),
+                PreferredThemeCategory.RESTAURANT, List.of(3)));
+
+        verify(userPreferredThemeRepository).deleteByUserUserIdAndPreferredThemeCategory(USER_ID, PreferredThemeCategory.ATTRACTION);
+        verify(userPreferredThemeRepository).deleteByUserUserIdAndPreferredThemeCategory(USER_ID, PreferredThemeCategory.RESTAURANT);
+        verify(userPreferredThemeRepository, never()).deleteByUserUserIdAndPreferredThemeCategory(USER_ID, PreferredThemeCategory.ACCOMMODATION);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<UserPreferredTheme>> captor = ArgumentCaptor.forClass(List.class);
+        verify(userPreferredThemeRepository).saveAll(captor.capture());
+        assertThat(captor.getValue()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("changePreferredThemes 성공 - 값이 빈 배열이면 그 카테고리를 전부 비움(삭제만, 삽입 없음)")
+    void changePreferredThemes_success_emptyListClearsCategory() {
+        given(preferredThemeRepository.findAllById(List.of())).willReturn(List.of());
+        User user = mock(User.class);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        userService.changePreferredThemes(USER_ID, Map.of(PreferredThemeCategory.ACCOMMODATION, List.of()));
+
+        verify(userPreferredThemeRepository).deleteByUserUserIdAndPreferredThemeCategory(USER_ID, PreferredThemeCategory.ACCOMMODATION);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<UserPreferredTheme>> captor = ArgumentCaptor.forClass(List.class);
+        verify(userPreferredThemeRepository).saveAll(captor.capture());
+        assertThat(captor.getValue()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("changePreferredThemes 실패 - 요청한 테마 ID 중 존재하지 않는 게 있음")
+    void changePreferredThemes_fail_themeNotFound() {
+        given(preferredThemeRepository.findAllById(List.of(999))).willReturn(List.of());
+
+        assertThatThrownBy(() -> userService.changePreferredThemes(USER_ID,
+                Map.of(PreferredThemeCategory.ATTRACTION, List.of(999))))
+                .isInstanceOf(PreferredThemeNotFoundException.class);
+
+        verify(userPreferredThemeRepository, never()).deleteByUserUserIdAndPreferredThemeCategory(any(), any());
+    }
+
+    @Test
+    @DisplayName("changePreferredThemes 실패 - 선언한 카테고리와 실제 테마의 카테고리가 다름")
+    void changePreferredThemes_fail_categoryMismatch() {
+        PreferredTheme cafe = PreferredTheme.builder().preferredThemeId(5).preferredThemeName("카페").category(PreferredThemeCategory.RESTAURANT).build();
+        given(preferredThemeRepository.findAllById(List.of(5))).willReturn(List.of(cafe));
+
+        assertThatThrownBy(() -> userService.changePreferredThemes(USER_ID,
+                Map.of(PreferredThemeCategory.ATTRACTION, List.of(5))))
+                .isInstanceOf(PreferredThemeCategoryMismatchException.class);
+
+        verify(userPreferredThemeRepository, never()).deleteByUserUserIdAndPreferredThemeCategory(any(), any());
+        verify(userRepository, never()).findById(USER_ID);
+    }
+
+    @Test
+    @DisplayName("changePreferredThemes 실패 - userId로 유저를 찾을 수 없음(삭제는 이미 실행된 뒤 실패, 트랜잭션 롤백으로 실제 DB엔 영향 없음)")
+    void changePreferredThemes_fail_userNotFound() {
+        PreferredTheme museum = PreferredTheme.builder().preferredThemeId(1).preferredThemeName("박물관").category(PreferredThemeCategory.ATTRACTION).build();
+        given(preferredThemeRepository.findAllById(List.of(1))).willReturn(List.of(museum));
+        given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.changePreferredThemes(USER_ID,
+                Map.of(PreferredThemeCategory.ATTRACTION, List.of(1))))
+                .isInstanceOf(UserNotFoundException.class);
+
+        verify(userPreferredThemeRepository).deleteByUserUserIdAndPreferredThemeCategory(USER_ID, PreferredThemeCategory.ATTRACTION);
+        verify(userPreferredThemeRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("registerFcmToken 성공")
+    void registerFcmToken_success() {
+        User user = mock(User.class);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        userService.registerFcmToken(USER_ID, "fcm-token-value");
+
+        verify(user).changeFcmToken("fcm-token-value");
+    }
+
+    @Test
+    @DisplayName("registerFcmToken 실패 - userId로 유저를 찾을 수 없음")
+    void registerFcmToken_fail_userNotFound() {
+        given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.registerFcmToken(USER_ID, "fcm-token-value"))
+                .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("resignAccount 성공 - 하드 삭제가 아니라 softDelete 호출")
+    void resignAccount_success() {
+        User user = mock(User.class);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        userService.resignAccount(USER_ID);
+
+        verify(user).softDelete();
+        verify(userRepository, never()).deleteById(any());
+        verify(userRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("resignAccount 실패 - userId로 유저를 찾을 수 없음")
+    void resignAccount_fail_userNotFound() {
+        given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.resignAccount(USER_ID))
                 .isInstanceOf(UserNotFoundException.class);
     }
 }

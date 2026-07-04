@@ -30,6 +30,7 @@ public enum ErrorCode {
 
     // 선호 테마
     PREFERRED_THEME_NOT_FOUND(HttpStatus.NOT_FOUND, "THEME_001", "존재하지 않는 선호 테마입니다."),
+    PREFERRED_THEME_CATEGORY_MISMATCH(HttpStatus.BAD_REQUEST, "THEME_002", "선호 테마의 카테고리가 요청한 카테고리와 일치하지 않습니다."),
 
     // 플랜
     PLAN_NOT_FOUND(HttpStatus.NOT_FOUND, "PLAN_001", "플랜을 찾을 수 없습니다."),
