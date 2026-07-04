@@ -38,6 +38,12 @@ public enum ErrorCode {
 
     // 협업 요청
     COLLABORATION_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "COLLAB_001", "협업 요청을 찾을 수 없습니다."),
+
+    // OAuth
+    OAUTH_UNSUPPORTED_PROVIDER(HttpStatus.BAD_REQUEST, "OAUTH_001", "지원하지 않는 SNS 로그인입니다."),
+    OAUTH_SIGNUP_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "OAUTH_002", "가입 세션이 만료되었거나 존재하지 않습니다."),
+    OAUTH_EMAIL_REQUIRED(HttpStatus.BAD_REQUEST, "OAUTH_003", "이메일 정보가 필요합니다."),
+    OAUTH_ALREADY_REGISTERED(HttpStatus.CONFLICT, "OAUTH_004", "이미 가입된 계정입니다."),
     ;
 
     private final HttpStatus httpStatus;

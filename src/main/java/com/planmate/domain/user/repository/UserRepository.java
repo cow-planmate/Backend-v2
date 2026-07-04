@@ -46,4 +46,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     // LOWER() 명시 — 파생 쿼리(대소문자 구분)로 두면 인덱스의 대소문자 무시 정책과 어긋남
     @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE LOWER(u.email) = LOWER(:email)")
     boolean existsByEmail(@Param("email") String email);
+
+    // OAuth 콜백 이메일 충돌 확인 — provider 무관 전체 (04_기능/OAuth/A_진입.md 7-2절)
+    // 활용 인덱스: uk_users_email ON (LOWER(email)) WHERE deleted_at IS NULL
+    @Query("SELECT u FROM User u WHERE LOWER(u.email) = LOWER(:email)")
+    Optional<User> findByEmailIgnoreCase(@Param("email") String email);
 }
