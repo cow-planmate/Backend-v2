@@ -20,7 +20,7 @@ public interface TimeTablePlaceBlockRepository extends JpaRepository<TimeTablePl
 
     // 일정표의 모든 블록 삭제 (명시적 처리가 필요한 경우)
     // time_table ON DELETE CASCADE로 자동 처리되므로, 개별 블록 삭제 API가 없다면 미사용
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM TimeTablePlaceBlock tb WHERE tb.timeTable.timeTableId = :timeTableId")
     void deleteByTimeTableTimeTableId(@Param("timeTableId") Long timeTableId);
 }

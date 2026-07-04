@@ -52,7 +52,7 @@ public interface PlanMemberRepository extends JpaRepository<PlanMember, Long> {
     Optional<PlanMember> findByPlanPlanIdAndUserUserId(UUID planId, UUID userId);
 
     // 멤버 제거
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM PlanMember pm WHERE pm.plan.planId = :planId AND pm.user.userId = :userId")
     void deleteByPlanPlanIdAndUserUserId(@Param("planId") UUID planId, @Param("userId") UUID userId);
 

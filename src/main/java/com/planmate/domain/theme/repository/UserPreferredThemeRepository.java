@@ -19,7 +19,7 @@ public interface UserPreferredThemeRepository extends JpaRepository<UserPreferre
 
     // 사용자의 선호 테마 전체 삭제 (재선택 시 — delete-then-insert 패턴)
     // 벌크 DELETE 한 번으로 처리하기 위해 파생 delete 대신 @Modifying + @Query 사용
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM UserPreferredTheme upt WHERE upt.user.userId = :userId")
     void deleteByUserUserId(@Param("userId") UUID userId);
 
