@@ -1,0 +1,184 @@
+package com.planmate.domain.user.service;
+
+import com.planmate.common.exception.domain.DuplicateNicknameException;
+import com.planmate.common.exception.domain.PreferredThemeCategoryMismatchException;
+import com.planmate.common.exception.domain.PreferredThemeNotFoundException;
+import com.planmate.common.exception.domain.UserNotFoundException;
+import com.planmate.domain.plan.entity.PlanMember;
+import com.planmate.domain.plan.enums.PlanMemberRole;
+import com.planmate.domain.plan.repository.PlanMemberRepository;
+import com.planmate.domain.theme.dto.PreferredThemeDto;
+import com.planmate.domain.theme.entity.PreferredTheme;
+import com.planmate.domain.theme.entity.UserPreferredTheme;
+import com.planmate.domain.theme.enums.PreferredThemeCategory;
+import com.planmate.domain.theme.repository.PreferredThemeRepository;
+import com.planmate.domain.theme.repository.UserPreferredThemeRepository;
+import com.planmate.domain.user.dto.PreferredThemeListResponse;
+import com.planmate.domain.user.dto.SimplePlanDto;
+import com.planmate.domain.user.dto.UserProfileResponse;
+import com.planmate.domain.user.entity.User;
+import com.planmate.domain.user.enums.Gender;
+import com.planmate.domain.user.enums.UserProvider;
+import com.planmate.domain.user.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class UserService {
+
+    private final UserRepository userRepository;
+    private final PreferredThemeRepository preferredThemeRepository;
+    private final UserPreferredThemeRepository userPreferredThemeRepository;
+    private final PlanMemberRepository planMemberRepository;
+
+    @Transactional(readOnly = true)
+    public PreferredThemeListResponse getPreferredThemes() {
+        List<PreferredThemeDto> preferredThemes = preferredThemeRepository.findAll().stream()
+                .map(PreferredThemeDto::from)
+                .toList();
+
+        return PreferredThemeListResponse.builder()
+                .preferredThemes(preferredThemes)
+                .build();
+    }
+
+    @Transactional
+    public void savePreferredThemes(UUID userId, List<Integer> preferredThemeIds) {
+        List<Integer> distinctIds = preferredThemeIds.stream().distinct().toList();
+        List<PreferredTheme> themes = preferredThemeRepository.findAllById(distinctIds);
+        if (themes.size() != distinctIds.size()) {
+            throw new PreferredThemeNotFoundException();
+        }
+
+        userPreferredThemeRepository.deleteByUserUserId(userId);
+
+        // deleteByUserUserId(clearAutomatically=true)가 영속성 컨텍스트를 비우므로,
+        // 삭제 이전에 조회해둔 User를 재사용하면 detached 상태라 insert 시 Hibernate가
+        // "unsaved transient entity"로 오판한다(HHH000437). 삭제 이후에 다시 조회해야 한다.
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+
+        List<UserPreferredTheme> selections = themes.stream()
+                .map(theme -> UserPreferredTheme.builder()
+                        .user(user)
+                        .preferredTheme(theme)
+                        .build())
+                .toList();
+        userPreferredThemeRepository.saveAll(selections);
+    }
+
+    @Transactional(readOnly = true)
+    public UserProfileResponse getProfile(UUID userId) {
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+
+        List<PreferredThemeDto> preferredThemes = userPreferredThemeRepository.findByUserUserId(userId).stream()
+                .map(userPreferredTheme -> PreferredThemeDto.from(userPreferredTheme.getPreferredTheme()))
+                .toList();
+
+        List<PlanMember> planMembers = planMemberRepository.findByUserUserId(userId);
+        List<SimplePlanDto> myPlans = planMembers.stream()
+                .filter(planMember -> planMember.getRole() == PlanMemberRole.OWNER)
+                .map(planMember -> SimplePlanDto.from(planMember.getPlan()))
+                .toList();
+        List<SimplePlanDto> editablePlans = planMembers.stream()
+                .filter(planMember -> planMember.getRole() == PlanMemberRole.EDITOR)
+                .map(planMember -> SimplePlanDto.from(planMember.getPlan()))
+                .toList();
+
+        return UserProfileResponse.builder()
+                .userId(user.getUserId())
+                .email(user.getEmail())
+                .nickname(user.getNickname())
+                .birthdate(user.getBirthdate())
+                .gender(user.getGender() == null ? null : user.getGender().name())
+                .isSocialLogin(user.getProvider() != UserProvider.LOCAL)
+                .myPlans(myPlans)
+                .editablePlans(editablePlans)
+                .preferredThemes(preferredThemes)
+                .build();
+    }
+
+    @Transactional
+    public void changeNickname(UUID userId, String nickname) {
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+
+        // 자기 자신의 현재 닉네임과 같은 값으로 재제출하면 existsByNickname이 본인 행에 걸려
+        // 오탐(중복)이 나므로, 실제로 값이 바뀌는 경우에만 중복을 확인한다.
+        if (!user.getNickname().equals(nickname) && userRepository.existsByNickname(nickname)) {
+            throw new DuplicateNicknameException();
+        }
+
+        user.changeNickname(nickname);
+    }
+
+    @Transactional
+    public void changeBirthdate(UUID userId, LocalDate birthdate) {
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+        user.changeBirthdate(birthdate);
+    }
+
+    @Transactional
+    public void changeGender(UUID userId, Gender gender) {
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+        user.changeGender(gender);
+    }
+
+    @Transactional
+    public void changePreferredThemes(UUID userId, Map<PreferredThemeCategory, List<Integer>> themeUpdates) {
+        List<Integer> allDistinctIds = themeUpdates.values().stream()
+                .flatMap(List::stream)
+                .distinct()
+                .toList();
+        List<PreferredTheme> themes = preferredThemeRepository.findAllById(allDistinctIds);
+        if (themes.size() != allDistinctIds.size()) {
+            throw new PreferredThemeNotFoundException();
+        }
+        Map<Integer, PreferredTheme> themesById = themes.stream()
+                .collect(Collectors.toMap(PreferredTheme::getPreferredThemeId, theme -> theme));
+
+        for (Map.Entry<PreferredThemeCategory, List<Integer>> entry : themeUpdates.entrySet()) {
+            boolean categoryMismatch = entry.getValue().stream()
+                    .map(themesById::get)
+                    .anyMatch(theme -> theme.getCategory() != entry.getKey());
+            if (categoryMismatch) {
+                throw new PreferredThemeCategoryMismatchException();
+            }
+        }
+
+        for (PreferredThemeCategory category : themeUpdates.keySet()) {
+            userPreferredThemeRepository.deleteByUserUserIdAndPreferredThemeCategory(userId, category);
+        }
+
+        // 모든 삭제가 끝난 뒤에 재조회 — savePreferredThemes와 동일 이유(HHH000437 회피, A_조회.md 10-3절)
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+
+        List<UserPreferredTheme> selections = themeUpdates.values().stream()
+                .flatMap(List::stream)
+                .distinct()
+                .map(themeId -> UserPreferredTheme.builder()
+                        .user(user)
+                        .preferredTheme(themesById.get(themeId))
+                        .build())
+                .toList();
+        userPreferredThemeRepository.saveAll(selections);
+    }
+
+    @Transactional
+    public void registerFcmToken(UUID userId, String fcmToken) {
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+        user.changeFcmToken(fcmToken);
+    }
+
+    @Transactional
+    public void resignAccount(UUID userId) {
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+        user.softDelete();
+    }
+}
