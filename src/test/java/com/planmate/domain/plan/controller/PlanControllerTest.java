@@ -24,6 +24,9 @@ import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.enums.UserRole;
 import com.planmate.domain.user.repository.UserRepository;
 import com.planmate.security.JwtTokenProvider;
+import com.planmate.domain.plan.entity.Plan;
+import com.planmate.domain.plan.entity.PlanMember;
+import com.planmate.domain.plan.enums.PlanMemberRole;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,6 +43,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -278,5 +282,129 @@ class PlanControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("PLAN_005"));
+    }
+
+    // ---------- #25 getPlan ----------
+
+    @Test
+    @DisplayName("플랜 상세 조회 성공 - 200, 소유자")
+    void getPlan_success_owner() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(get("/api/plan/{planId}", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.planFrame.planId").value(plan.getPlanId().toString()))
+                .andExpect(jsonPath("$.planFrame.destinationName").value("서울"));
+    }
+
+    @Test
+    @DisplayName("플랜 상세 조회 실패 - 인증 토큰 없으면 401")
+    void getPlan_fail_noAuth() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(get("/api/plan/{planId}", plan.getPlanId()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("플랜 상세 조회 실패 - 로그인은 했지만 소유자/편집자가 아니면 403")
+    void getPlan_fail_notMember() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        String otherToken = createOtherUserToken();
+
+        mockMvc.perform(get("/api/plan/{planId}", plan.getPlanId())
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_002"));
+    }
+
+    @Test
+    @DisplayName("플랜 상세 조회 실패 - 존재하지 않는 플랜이면 404")
+    void getPlan_fail_planNotFound() throws Exception {
+        mockMvc.perform(get("/api/plan/{planId}", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    // ---------- #26 getCompletePlan (원본 #26/27 통합) ----------
+
+    @Test
+    @DisplayName("완료된 플랜 조회 성공 - is_shared=true면 인증 헤더 없이도(익명) 200")
+    void getCompletePlan_success_sharedTrue_anonymous() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(get("/api/plan/{planId}/complete", plan.getPlanId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.planFrame.planId").value(plan.getPlanId().toString()));
+    }
+
+    @Test
+    @DisplayName("완료된 플랜 조회 실패 - is_shared=false, 인증 헤더 없으면 401")
+    void getCompletePlan_fail_sharedFalse_noAuth() throws Exception {
+        Plan plan = createTestPlan(false, testUser);
+
+        mockMvc.perform(get("/api/plan/{planId}/complete", plan.getPlanId()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("완료된 플랜 조회 실패 - is_shared=false, 로그인했지만 멤버 아니면 403")
+    void getCompletePlan_fail_sharedFalse_notMember() throws Exception {
+        Plan plan = createTestPlan(false, testUser);
+        String otherToken = createOtherUserToken();
+
+        mockMvc.perform(get("/api/plan/{planId}/complete", plan.getPlanId())
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_002"));
+    }
+
+    @Test
+    @DisplayName("완료된 플랜 조회 성공 - is_shared=false, 로그인했고 소유자면 200")
+    void getCompletePlan_success_sharedFalse_owner() throws Exception {
+        Plan plan = createTestPlan(false, testUser);
+
+        mockMvc.perform(get("/api/plan/{planId}/complete", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.planFrame.planId").value(plan.getPlanId().toString()));
+    }
+
+    @Test
+    @DisplayName("완료된 플랜 조회 실패 - 존재하지 않는 플랜이면 404(익명 요청이어도)")
+    void getCompletePlan_fail_planNotFound() throws Exception {
+        mockMvc.perform(get("/api/plan/{planId}/complete", UUID.randomUUID()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    private Plan createTestPlan(boolean isShared, User owner) {
+        Plan plan = planRepository.saveAndFlush(Plan.builder()
+                .planName("테스트 플랜")
+                .adultCount(1)
+                .childCount(0)
+                .transportationType(TransportationType.PUBLIC)
+                .isShared(isShared)
+                .user(owner)
+                .destination(destination)
+                .build());
+        planMemberRepository.saveAndFlush(PlanMember.builder()
+                .plan(plan)
+                .user(owner)
+                .role(PlanMemberRole.OWNER)
+                .build());
+        return plan;
+    }
+
+    private String createOtherUserToken() {
+        User otherUser = userRepository.saveAndFlush(User.builder()
+                .provider(UserProvider.LOCAL)
+                .email("plan-test-other-" + UUID.randomUUID() + "@example.com")
+                .nickname("other-" + UUID.randomUUID().toString().substring(0, 8))
+                .role(UserRole.USER)
+                .build());
+        return jwtTokenProvider.createAccessToken(otherUser.getUserId(), otherUser.getRole().name());
     }
 }

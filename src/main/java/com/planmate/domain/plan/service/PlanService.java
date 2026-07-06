@@ -1,9 +1,11 @@
 package com.planmate.domain.plan.service;
 
+import com.planmate.common.exception.domain.AuthenticationRequiredException;
 import com.planmate.common.exception.domain.DestinationNotFoundException;
 import com.planmate.common.exception.domain.PlanDuplicateBlockTimeException;
 import com.planmate.common.exception.domain.PlanDuplicateDateException;
 import com.planmate.common.exception.domain.PlanInvalidBlockDateException;
+import com.planmate.common.exception.domain.PlanNotFoundException;
 import com.planmate.common.exception.domain.UserNotFoundException;
 import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.repository.DestinationRepository;
@@ -11,8 +13,13 @@ import com.planmate.domain.plan.dto.CreatePlanFrameRequest;
 import com.planmate.domain.plan.dto.CreatePlanFrameResponse;
 import com.planmate.domain.plan.dto.CreatePlanRequest;
 import com.planmate.domain.plan.dto.CreatePlanResponse;
+import com.planmate.domain.plan.dto.GetCompletePlanResponse;
+import com.planmate.domain.plan.dto.GetPlanResponse;
+import com.planmate.domain.plan.dto.PlanFrameDetailDto;
 import com.planmate.domain.plan.dto.PlanFrameDto;
+import com.planmate.domain.plan.dto.TimetableDetailDto;
 import com.planmate.domain.plan.dto.TimetableDto;
+import com.planmate.domain.plan.dto.TimetablePlaceBlockDetailDto;
 import com.planmate.domain.plan.dto.TimetablePlaceBlockDto;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
@@ -20,6 +27,7 @@ import com.planmate.domain.plan.enums.PlanMemberRole;
 import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
+import com.planmate.domain.plan.validator.PlanAccessValidator;
 import com.planmate.domain.timetable.entity.TimeTable;
 import com.planmate.domain.timetable.entity.TimeTablePlaceBlock;
 import com.planmate.domain.timetable.repository.TimeTablePlaceBlockRepository;
@@ -27,6 +35,7 @@ import com.planmate.domain.timetable.repository.TimeTableRepository;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,6 +61,7 @@ public class PlanService {
     private final DestinationRepository destinationRepository;
     private final TimeTableRepository timeTableRepository;
     private final TimeTablePlaceBlockRepository timeTablePlaceBlockRepository;
+    private final PlanAccessValidator planAccessValidator;
 
     @Transactional
     public CreatePlanFrameResponse createPlanFrame(UUID userId, CreatePlanFrameRequest request) {
@@ -132,6 +142,51 @@ public class PlanService {
         createOwnerMember(savedPlan, user);
 
         return new CreatePlanResponse(savedPlan.getPlanId());
+    }
+
+    @PreAuthorize("@planAccessValidator.validateMember(#planId, authentication.principal)")
+    @Transactional(readOnly = true)
+    public GetPlanResponse getPlan(UUID planId) {
+        Plan plan = planRepository.findById(planId)
+                .orElseThrow(PlanNotFoundException::new);
+
+        // TODO(sharedsync): 원본 PlanService.getPlan()은 이 지점에서
+        //   1) presenceStorage.waitForSync(planId) 로 실시간 편집 세션과의 동기화를 먼저 기다리고
+        //   2) planCache/timeTableCache/timeTablePlaceBlockCache에 최신 상태가 있으면 그걸 우선 사용했다.
+        // sharedsync 통합 범위/설계가 아직 미확정이라(전체_작업_진행상황.md 5절 1번) 지금은 DB 직접 조회만 수행한다.
+        // sharedsync 통합 착수 시 이 메서드부터 재검토할 것 — B_조회.md 10-1절 참고.
+        List<TimetableDetailDto> timetables = timeTableRepository.findByPlanPlanIdOrderByDate(planId).stream()
+                .map(TimetableDetailDto::from)
+                .toList();
+        List<TimetablePlaceBlockDetailDto> placeBlocks = timeTablePlaceBlockRepository
+                .findByPlanIdOrderByDateAndStartTime(planId).stream()
+                .map(TimetablePlaceBlockDetailDto::from)
+                .toList();
+
+        return new GetPlanResponse(PlanFrameDetailDto.from(plan), timetables, placeBlocks);
+    }
+
+    @Transactional(readOnly = true)
+    public GetCompletePlanResponse getCompletePlan(UUID userId, UUID planId) {
+        Plan plan = planRepository.findById(planId)
+                .orElseThrow(PlanNotFoundException::new);
+
+        if (!plan.isShared()) {
+            if (userId == null) {
+                throw new AuthenticationRequiredException();
+            }
+            planAccessValidator.validateMember(planId, userId);
+        }
+
+        List<TimetableDetailDto> timetables = timeTableRepository.findByPlanPlanIdOrderByDate(planId).stream()
+                .map(TimetableDetailDto::from)
+                .toList();
+        List<TimetablePlaceBlockDetailDto> placeBlocks = timeTablePlaceBlockRepository
+                .findByPlanIdOrderByDateAndStartTime(planId).stream()
+                .map(TimetablePlaceBlockDetailDto::from)
+                .toList();
+
+        return new GetCompletePlanResponse(PlanFrameDetailDto.from(plan), timetables, placeBlocks);
     }
 
     private Plan buildPlan(Destination destination, User user,

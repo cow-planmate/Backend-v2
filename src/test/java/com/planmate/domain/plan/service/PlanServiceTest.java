@@ -1,9 +1,12 @@
 package com.planmate.domain.plan.service;
 
+import com.planmate.common.exception.domain.AuthenticationRequiredException;
 import com.planmate.common.exception.domain.DestinationNotFoundException;
+import com.planmate.common.exception.domain.PlanAccessDeniedException;
 import com.planmate.common.exception.domain.PlanDuplicateBlockTimeException;
 import com.planmate.common.exception.domain.PlanDuplicateDateException;
 import com.planmate.common.exception.domain.PlanInvalidBlockDateException;
+import com.planmate.common.exception.domain.PlanNotFoundException;
 import com.planmate.common.exception.domain.UserNotFoundException;
 import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.repository.DestinationRepository;
@@ -11,6 +14,8 @@ import com.planmate.domain.plan.dto.CreatePlanFrameRequest;
 import com.planmate.domain.plan.dto.CreatePlanFrameResponse;
 import com.planmate.domain.plan.dto.CreatePlanRequest;
 import com.planmate.domain.plan.dto.CreatePlanResponse;
+import com.planmate.domain.plan.dto.GetCompletePlanResponse;
+import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.dto.PlanFrameDto;
 import com.planmate.domain.plan.dto.TimetableDto;
 import com.planmate.domain.plan.dto.TimetablePlaceBlockDto;
@@ -20,6 +25,7 @@ import com.planmate.domain.plan.enums.PlanMemberRole;
 import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
+import com.planmate.domain.plan.validator.PlanAccessValidator;
 import com.planmate.domain.timetable.entity.TimeTable;
 import com.planmate.domain.timetable.entity.TimeTablePlaceBlock;
 import com.planmate.domain.timetable.enums.BlockCategory;
@@ -46,8 +52,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class PlanServiceTest {
@@ -68,6 +76,8 @@ class PlanServiceTest {
     private TimeTableRepository timeTableRepository;
     @Mock
     private TimeTablePlaceBlockRepository timeTablePlaceBlockRepository;
+    @Mock
+    private PlanAccessValidator planAccessValidator;
 
     @InjectMocks
     private PlanService planService;
@@ -312,5 +322,126 @@ class PlanServiceTest {
                 .isInstanceOf(DestinationNotFoundException.class);
 
         verify(planRepository, never()).save(any());
+    }
+
+    // ---------- getPlan (#25) ----------
+
+    @Test
+    @DisplayName("플랜 상세 조회 성공 - 프레임+타임테이블+블록 조립")
+    void getPlan_success() {
+        Plan plan = sharedPlanStub(true);
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+
+        TimeTable timeTable = TimeTable.builder()
+                .timeTableId(1L)
+                .date(LocalDate.of(2026, 8, 1))
+                .timeTableStartTime(LocalTime.of(9, 0))
+                .timeTableEndTime(LocalTime.of(20, 0))
+                .plan(plan)
+                .build();
+        given(timeTableRepository.findByPlanPlanIdOrderByDate(PLAN_ID)).willReturn(List.of(timeTable));
+
+        TimeTablePlaceBlock block = TimeTablePlaceBlock.builder()
+                .blockId(10L)
+                .timeTable(timeTable)
+                .placeName("경복궁")
+                .blockCategory(BlockCategory.ATTRACTION)
+                .blockStartTime(LocalTime.of(10, 0))
+                .blockEndTime(LocalTime.of(12, 0))
+                .build();
+        given(timeTablePlaceBlockRepository.findByPlanIdOrderByDateAndStartTime(PLAN_ID)).willReturn(List.of(block));
+
+        GetPlanResponse response = planService.getPlan(PLAN_ID);
+
+        assertThat(response.planFrame().planId()).isEqualTo(PLAN_ID);
+        assertThat(response.planFrame().destinationName()).isEqualTo("서울");
+        assertThat(response.timetables()).hasSize(1);
+        assertThat(response.timetables().get(0).timeTableId()).isEqualTo(1L);
+        assertThat(response.placeBlocks()).hasSize(1);
+        assertThat(response.placeBlocks().get(0).placeName()).isEqualTo("경복궁");
+    }
+
+    @Test
+    @DisplayName("플랜 상세 조회 실패 - 플랜 없음")
+    void getPlan_fail_planNotFound() {
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> planService.getPlan(PLAN_ID))
+                .isInstanceOf(PlanNotFoundException.class);
+    }
+
+    // ---------- getCompletePlan (#26, 원본 #26/27 통합) ----------
+
+    @Test
+    @DisplayName("완료된 플랜 조회 성공 - is_shared=true면 로그인 없이도(userId=null) 통과, 멤버 검증 안 함")
+    void getCompletePlan_success_sharedTrue_anonymous() {
+        Plan plan = sharedPlanStub(true);
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+        given(timeTableRepository.findByPlanPlanIdOrderByDate(PLAN_ID)).willReturn(List.of());
+        given(timeTablePlaceBlockRepository.findByPlanIdOrderByDateAndStartTime(PLAN_ID)).willReturn(List.of());
+
+        GetCompletePlanResponse response = planService.getCompletePlan(null, PLAN_ID);
+
+        assertThat(response.planFrame().planId()).isEqualTo(PLAN_ID);
+        verifyNoInteractions(planAccessValidator);
+    }
+
+    @Test
+    @DisplayName("완료된 플랜 조회 실패 - is_shared=false, 로그인 안 함(userId=null)이면 401")
+    void getCompletePlan_fail_sharedFalse_noAuth() {
+        Plan plan = sharedPlanStub(false);
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+
+        assertThatThrownBy(() -> planService.getCompletePlan(null, PLAN_ID))
+                .isInstanceOf(AuthenticationRequiredException.class);
+
+        verifyNoInteractions(planAccessValidator);
+    }
+
+    @Test
+    @DisplayName("완료된 플랜 조회 실패 - is_shared=false, 로그인했지만 멤버 아니면 403")
+    void getCompletePlan_fail_sharedFalse_notMember() {
+        Plan plan = sharedPlanStub(false);
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+        willThrow(new PlanAccessDeniedException()).given(planAccessValidator).validateMember(PLAN_ID, USER_ID);
+
+        assertThatThrownBy(() -> planService.getCompletePlan(USER_ID, PLAN_ID))
+                .isInstanceOf(PlanAccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("완료된 플랜 조회 성공 - is_shared=false, 로그인했고 멤버면 통과")
+    void getCompletePlan_success_sharedFalse_member() {
+        Plan plan = sharedPlanStub(false);
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+        given(planAccessValidator.validateMember(PLAN_ID, USER_ID)).willReturn(true);
+        given(timeTableRepository.findByPlanPlanIdOrderByDate(PLAN_ID)).willReturn(List.of());
+        given(timeTablePlaceBlockRepository.findByPlanIdOrderByDateAndStartTime(PLAN_ID)).willReturn(List.of());
+
+        GetCompletePlanResponse response = planService.getCompletePlan(USER_ID, PLAN_ID);
+
+        assertThat(response.planFrame().planId()).isEqualTo(PLAN_ID);
+        verify(planAccessValidator).validateMember(PLAN_ID, USER_ID);
+    }
+
+    @Test
+    @DisplayName("완료된 플랜 조회 실패 - 플랜 없음")
+    void getCompletePlan_fail_planNotFound() {
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> planService.getCompletePlan(USER_ID, PLAN_ID))
+                .isInstanceOf(PlanNotFoundException.class);
+    }
+
+    private Plan sharedPlanStub(boolean isShared) {
+        return Plan.builder()
+                .planId(PLAN_ID)
+                .planName("서울 여행")
+                .adultCount(1)
+                .childCount(0)
+                .transportationType(TransportationType.PUBLIC)
+                .isShared(isShared)
+                .destination(destination())
+                .build();
     }
 }
