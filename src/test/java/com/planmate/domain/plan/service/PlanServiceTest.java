@@ -17,6 +17,7 @@ import com.planmate.domain.plan.dto.CreatePlanResponse;
 import com.planmate.domain.plan.dto.DeleteMultiplePlansResponse;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
+import com.planmate.domain.plan.dto.GetShareStatusResponse;
 import com.planmate.domain.plan.dto.PlanFrameDto;
 import com.planmate.domain.plan.dto.TimetableDto;
 import com.planmate.domain.plan.dto.TimetablePlaceBlockDto;
@@ -495,5 +496,91 @@ class PlanServiceTest {
 
         assertThatThrownBy(() -> planService.deleteMultiplePlans(USER_ID, List.of(PLAN_ID)))
                 .isInstanceOf(PlanAccessDeniedException.class);
+    }
+
+    // ---------- editPlanName (#31) ----------
+
+    @Test
+    @DisplayName("플랜 이름 수정 성공")
+    void editPlanName_success() {
+        Plan plan = savedPlanStub();
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+
+        planService.editPlanName(PLAN_ID, "새로운 플랜 이름");
+
+        assertThat(plan.getPlanName()).isEqualTo("새로운 플랜 이름");
+    }
+
+    @Test
+    @DisplayName("플랜 이름 수정 실패 - 플랜 없음")
+    void editPlanName_fail_planNotFound() {
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> planService.editPlanName(PLAN_ID, "새로운 플랜 이름"))
+                .isInstanceOf(PlanNotFoundException.class);
+    }
+
+    // ---------- getShareStatus (#32 GET) ----------
+
+    @Test
+    @DisplayName("공유 상태 조회 성공 - isShared=true")
+    void getShareStatus_success_shared() {
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(sharedPlanStub(true)));
+
+        GetShareStatusResponse response = planService.getShareStatus(PLAN_ID);
+
+        assertThat(response.isShared()).isTrue();
+    }
+
+    @Test
+    @DisplayName("공유 상태 조회 성공 - isShared=false")
+    void getShareStatus_success_notShared() {
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(sharedPlanStub(false)));
+
+        GetShareStatusResponse response = planService.getShareStatus(PLAN_ID);
+
+        assertThat(response.isShared()).isFalse();
+    }
+
+    @Test
+    @DisplayName("공유 상태 조회 실패 - 플랜 없음")
+    void getShareStatus_fail_planNotFound() {
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> planService.getShareStatus(PLAN_ID))
+                .isInstanceOf(PlanNotFoundException.class);
+    }
+
+    // ---------- updateShare (#32 PATCH) ----------
+
+    @Test
+    @DisplayName("공유 상태 변경 성공 - false에서 true로 전환")
+    void updateShare_success_toTrue() {
+        Plan plan = savedPlanStub();
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+
+        planService.updateShare(PLAN_ID, true);
+
+        assertThat(plan.isShared()).isTrue();
+    }
+
+    @Test
+    @DisplayName("공유 상태 변경 성공 - true에서 false로 전환")
+    void updateShare_success_toFalse() {
+        Plan plan = sharedPlanStub(true);
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+
+        planService.updateShare(PLAN_ID, false);
+
+        assertThat(plan.isShared()).isFalse();
+    }
+
+    @Test
+    @DisplayName("공유 상태 변경 실패 - 플랜 없음")
+    void updateShare_fail_planNotFound() {
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> planService.updateShare(PLAN_ID, true))
+                .isInstanceOf(PlanNotFoundException.class);
     }
 }

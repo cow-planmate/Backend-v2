@@ -17,6 +17,7 @@ import com.planmate.domain.plan.dto.CreatePlanResponse;
 import com.planmate.domain.plan.dto.DeleteMultiplePlansResponse;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
+import com.planmate.domain.plan.dto.GetShareStatusResponse;
 import com.planmate.domain.plan.dto.PlanFrameDetailDto;
 import com.planmate.domain.plan.dto.PlanFrameDto;
 import com.planmate.domain.plan.dto.TimetableDetailDto;
@@ -215,6 +216,34 @@ public class PlanService {
                 .toList();
 
         return new DeleteMultiplePlansResponse(deletedPlanIds);
+    }
+
+    @PreAuthorize("@planAccessValidator.validateOwner(#planId, authentication.principal)")
+    @Transactional
+    public void editPlanName(UUID planId, String planName) {
+        Plan plan = planRepository.findById(planId)
+                .orElseThrow(PlanNotFoundException::new);
+        plan.rename(planName);
+    }
+
+    @PreAuthorize("@planAccessValidator.validateMember(#planId, authentication.principal)")
+    @Transactional(readOnly = true)
+    public GetShareStatusResponse getShareStatus(UUID planId) {
+        Plan plan = planRepository.findById(planId)
+                .orElseThrow(PlanNotFoundException::new);
+        return new GetShareStatusResponse(plan.isShared());
+    }
+
+    @PreAuthorize("@planAccessValidator.validateOwner(#planId, authentication.principal)")
+    @Transactional
+    public void updateShare(UUID planId, boolean isShared) {
+        Plan plan = planRepository.findById(planId)
+                .orElseThrow(PlanNotFoundException::new);
+        if (isShared) {
+            plan.share();
+        } else {
+            plan.unshare();
+        }
     }
 
     private Plan buildPlan(Destination destination, User user,

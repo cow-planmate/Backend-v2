@@ -6,7 +6,9 @@ import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.plan.dto.CreatePlanFrameRequest;
 import com.planmate.domain.plan.dto.CreatePlanRequest;
 import com.planmate.domain.plan.dto.DeleteMultiplePlansRequest;
+import com.planmate.domain.plan.dto.EditPlanNameRequest;
 import com.planmate.domain.plan.dto.PlanFrameDto;
+import com.planmate.domain.plan.dto.UpdateShareRequest;
 import com.planmate.domain.plan.dto.TimetableDto;
 import com.planmate.domain.plan.dto.TimetablePlaceBlockDto;
 import com.planmate.domain.plan.entity.Plan;
@@ -48,6 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -510,6 +513,207 @@ class PlanControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ---------- #31 editPlanName ----------
+
+    @Test
+    @DisplayName("플랜 이름 수정 성공 - 204, DB 반영 확인")
+    void editPlanName_success() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        EditPlanNameRequest request = new EditPlanNameRequest("새로운 플랜 이름");
+
+        mockMvc.perform(patch("/api/plan/{planId}/name", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNoContent());
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(planRepository.findById(plan.getPlanId()).orElseThrow().getPlanName())
+                .isEqualTo("새로운 플랜 이름");
+    }
+
+    @Test
+    @DisplayName("플랜 이름 수정 실패 - 인증 토큰 없으면 401")
+    void editPlanName_fail_noAuth() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        EditPlanNameRequest request = new EditPlanNameRequest("새로운 플랜 이름");
+
+        mockMvc.perform(patch("/api/plan/{planId}/name", plan.getPlanId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("플랜 이름 수정 실패 - 편집자(EDITOR)는 소유자가 아니므로 403")
+    void editPlanName_fail_editorNotOwner() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User editor = createOtherUser();
+        planMemberRepository.saveAndFlush(PlanMember.builder()
+                .plan(plan)
+                .user(editor)
+                .role(PlanMemberRole.EDITOR)
+                .build());
+        String editorToken = jwtTokenProvider.createAccessToken(editor.getUserId(), editor.getRole().name());
+        EditPlanNameRequest request = new EditPlanNameRequest("새로운 플랜 이름");
+
+        mockMvc.perform(patch("/api/plan/{planId}/name", plan.getPlanId())
+                        .header("Authorization", "Bearer " + editorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_002"));
+    }
+
+    @Test
+    @DisplayName("플랜 이름 수정 실패 - 존재하지 않는 플랜이면 404")
+    void editPlanName_fail_planNotFound() throws Exception {
+        EditPlanNameRequest request = new EditPlanNameRequest("새로운 플랜 이름");
+
+        mockMvc.perform(patch("/api/plan/{planId}/name", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    @Test
+    @DisplayName("플랜 이름 수정 실패 - 이름이 비어있으면 400")
+    void editPlanName_fail_blankName() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        EditPlanNameRequest request = new EditPlanNameRequest(" ");
+
+        mockMvc.perform(patch("/api/plan/{planId}/name", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+    }
+
+    // ---------- #32 getShareStatus ----------
+
+    @Test
+    @DisplayName("공유 상태 조회 성공 - isShared 값 그대로 반환")
+    void getShareStatus_success() throws Exception {
+        Plan plan = createTestPlan(false, testUser);
+
+        mockMvc.perform(get("/api/plan/{planId}/share", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isShared").value(false));
+    }
+
+    @Test
+    @DisplayName("공유 상태 조회 실패 - 인증 토큰 없으면 401")
+    void getShareStatus_fail_noAuth() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(get("/api/plan/{planId}/share", plan.getPlanId()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("공유 상태 조회 실패 - 멤버가 아니면 403")
+    void getShareStatus_fail_notMember() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        String otherToken = createOtherUserToken();
+
+        mockMvc.perform(get("/api/plan/{planId}/share", plan.getPlanId())
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_002"));
+    }
+
+    @Test
+    @DisplayName("공유 상태 조회 실패 - 존재하지 않는 플랜이면 404")
+    void getShareStatus_fail_planNotFound() throws Exception {
+        mockMvc.perform(get("/api/plan/{planId}/share", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    // ---------- #32 updateShare ----------
+
+    @Test
+    @DisplayName("공유 상태 변경 성공 - 204, DB 반영 확인")
+    void updateShare_success() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        UpdateShareRequest request = new UpdateShareRequest(false);
+
+        mockMvc.perform(patch("/api/plan/{planId}/share", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNoContent());
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(planRepository.findById(plan.getPlanId()).orElseThrow().isShared()).isFalse();
+    }
+
+    @Test
+    @DisplayName("공유 상태 변경 실패 - 인증 토큰 없으면 401")
+    void updateShare_fail_noAuth() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        UpdateShareRequest request = new UpdateShareRequest(false);
+
+        mockMvc.perform(patch("/api/plan/{planId}/share", plan.getPlanId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("공유 상태 변경 실패 - 편집자(EDITOR)는 소유자가 아니므로 403")
+    void updateShare_fail_editorNotOwner() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User editor = createOtherUser();
+        planMemberRepository.saveAndFlush(PlanMember.builder()
+                .plan(plan)
+                .user(editor)
+                .role(PlanMemberRole.EDITOR)
+                .build());
+        String editorToken = jwtTokenProvider.createAccessToken(editor.getUserId(), editor.getRole().name());
+        UpdateShareRequest request = new UpdateShareRequest(false);
+
+        mockMvc.perform(patch("/api/plan/{planId}/share", plan.getPlanId())
+                        .header("Authorization", "Bearer " + editorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_002"));
+    }
+
+    @Test
+    @DisplayName("공유 상태 변경 실패 - 존재하지 않는 플랜이면 404")
+    void updateShare_fail_planNotFound() throws Exception {
+        UpdateShareRequest request = new UpdateShareRequest(false);
+
+        mockMvc.perform(patch("/api/plan/{planId}/share", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    @Test
+    @DisplayName("공유 상태 변경 실패 - isShared 누락이면 400")
+    void updateShare_fail_missingIsShared() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(patch("/api/plan/{planId}/share", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
     }
 
     private Plan createTestPlan(boolean isShared, User owner) {

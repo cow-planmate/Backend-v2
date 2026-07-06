@@ -6,8 +6,11 @@ import com.planmate.domain.plan.dto.CreatePlanRequest;
 import com.planmate.domain.plan.dto.CreatePlanResponse;
 import com.planmate.domain.plan.dto.DeleteMultiplePlansRequest;
 import com.planmate.domain.plan.dto.DeleteMultiplePlansResponse;
+import com.planmate.domain.plan.dto.EditPlanNameRequest;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
+import com.planmate.domain.plan.dto.GetShareStatusResponse;
+import com.planmate.domain.plan.dto.UpdateShareRequest;
 import com.planmate.domain.plan.service.PlanService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -69,5 +73,24 @@ public class PlanController {
             @Valid @RequestBody DeleteMultiplePlansRequest request) {
         DeleteMultiplePlansResponse response = planService.deleteMultiplePlans(userId, request.planIds());
         return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/{planId}/name")
+    public ResponseEntity<Void> editPlanName(@PathVariable UUID planId,
+                                              @Valid @RequestBody EditPlanNameRequest request) {
+        planService.editPlanName(planId, request.planName());
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{planId}/share")
+    public ResponseEntity<GetShareStatusResponse> getShareStatus(@PathVariable UUID planId) {
+        return ResponseEntity.ok(planService.getShareStatus(planId));
+    }
+
+    @PatchMapping("/{planId}/share")
+    public ResponseEntity<Void> updateShare(@PathVariable UUID planId,
+                                             @Valid @RequestBody UpdateShareRequest request) {
+        planService.updateShare(planId, request.isShared());
+        return ResponseEntity.noContent().build();
     }
 }

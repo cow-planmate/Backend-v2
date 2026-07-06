@@ -69,4 +69,16 @@ public class Plan extends BaseSoftDeleteEntity {
             this.planId = UuidCreator.getTimeOrderedEpoch();
         }
     }
+
+    public void rename(String planName) {
+        this.planName = planName;
+    }
+
+    public void share() {
+        this.isShared = true;
+    }
+
+    public void unshare() {
+        this.isShared = false;
+    }
 }
