@@ -5,6 +5,7 @@ import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.plan.dto.CreatePlanFrameRequest;
 import com.planmate.domain.plan.dto.CreatePlanRequest;
+import com.planmate.domain.plan.dto.DeleteMultiplePlansRequest;
 import com.planmate.domain.plan.dto.PlanFrameDto;
 import com.planmate.domain.plan.dto.TimetableDto;
 import com.planmate.domain.plan.dto.TimetablePlaceBlockDto;
@@ -27,6 +28,7 @@ import com.planmate.security.JwtTokenProvider;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,6 +45,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -71,6 +75,8 @@ class PlanControllerTest {
     private TimeTableRepository timeTableRepository;
     @Autowired
     private TimeTablePlaceBlockRepository timeTablePlaceBlockRepository;
+    @Autowired
+    private EntityManager entityManager;
 
     private User testUser;
     private String accessToken;
@@ -380,6 +386,132 @@ class PlanControllerTest {
                 .andExpect(jsonPath("$.code").value("PLAN_001"));
     }
 
+    // ---------- #28 deletePlan ----------
+
+    @Test
+    @DisplayName("플랜 삭제 성공 - 204, 소프트 삭제 반영 확인 + 삭제 후 재조회 시 404")
+    void deletePlan_success() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(delete("/api/plan/{planId}", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNoContent());
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(planRepository.findById(plan.getPlanId())).isEmpty();
+
+        mockMvc.perform(get("/api/plan/{planId}", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    @Test
+    @DisplayName("플랜 삭제 실패 - 인증 토큰 없으면 401")
+    void deletePlan_fail_noAuth() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(delete("/api/plan/{planId}", plan.getPlanId()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("플랜 삭제 실패 - 편집자(EDITOR)는 소유자가 아니므로 403")
+    void deletePlan_fail_editorNotOwner() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User editor = createOtherUser();
+        planMemberRepository.saveAndFlush(PlanMember.builder()
+                .plan(plan)
+                .user(editor)
+                .role(PlanMemberRole.EDITOR)
+                .build());
+        String editorToken = jwtTokenProvider.createAccessToken(editor.getUserId(), editor.getRole().name());
+
+        mockMvc.perform(delete("/api/plan/{planId}", plan.getPlanId())
+                        .header("Authorization", "Bearer " + editorToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_002"));
+    }
+
+    @Test
+    @DisplayName("플랜 삭제 실패 - 존재하지 않는 플랜이면 404")
+    void deletePlan_fail_planNotFound() throws Exception {
+        mockMvc.perform(delete("/api/plan/{planId}", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    // ---------- #30 deleteMultiplePlans ----------
+
+    @Test
+    @DisplayName("플랜 다중 삭제 성공 - 소유한 것만 삭제되고 deletedPlanIds로 반환, 소유하지 않은 건 그대로 남음")
+    void deleteMultiplePlans_success() throws Exception {
+        Plan owned1 = createTestPlan(true, testUser);
+        Plan owned2 = createTestPlan(true, testUser);
+        User otherOwner = createOtherUser();
+        Plan notOwned = createTestPlan(true, otherOwner);
+
+        DeleteMultiplePlansRequest request = new DeleteMultiplePlansRequest(
+                List.of(owned1.getPlanId(), owned2.getPlanId(), notOwned.getPlanId()));
+
+        mockMvc.perform(delete("/api/plan")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deletedPlanIds.length()").value(2))
+                .andExpect(jsonPath("$.deletedPlanIds", containsInAnyOrder(
+                        owned1.getPlanId().toString(), owned2.getPlanId().toString())));
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(planRepository.findById(owned1.getPlanId())).isEmpty();
+        assertThat(planRepository.findById(owned2.getPlanId())).isEmpty();
+        assertThat(planRepository.findById(notOwned.getPlanId())).isPresent();
+    }
+
+    @Test
+    @DisplayName("플랜 다중 삭제 실패 - planIds가 비어있으면 400")
+    void deleteMultiplePlans_fail_emptyList() throws Exception {
+        DeleteMultiplePlansRequest request = new DeleteMultiplePlansRequest(List.of());
+
+        mockMvc.perform(delete("/api/plan")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+    }
+
+    @Test
+    @DisplayName("플랜 다중 삭제 실패 - 소유한 플랜이 하나도 없으면 403")
+    void deleteMultiplePlans_fail_noneOwned() throws Exception {
+        User otherOwner = createOtherUser();
+        Plan notOwned = createTestPlan(true, otherOwner);
+
+        DeleteMultiplePlansRequest request = new DeleteMultiplePlansRequest(List.of(notOwned.getPlanId()));
+
+        mockMvc.perform(delete("/api/plan")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_002"));
+    }
+
+    @Test
+    @DisplayName("플랜 다중 삭제 실패 - 인증 토큰 없으면 401")
+    void deleteMultiplePlans_fail_noAuth() throws Exception {
+        DeleteMultiplePlansRequest request = new DeleteMultiplePlansRequest(List.of(UUID.randomUUID()));
+
+        mockMvc.perform(delete("/api/plan")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
     private Plan createTestPlan(boolean isShared, User owner) {
         Plan plan = planRepository.saveAndFlush(Plan.builder()
                 .planName("테스트 플랜")
@@ -399,12 +531,16 @@ class PlanControllerTest {
     }
 
     private String createOtherUserToken() {
-        User otherUser = userRepository.saveAndFlush(User.builder()
+        User otherUser = createOtherUser();
+        return jwtTokenProvider.createAccessToken(otherUser.getUserId(), otherUser.getRole().name());
+    }
+
+    private User createOtherUser() {
+        return userRepository.saveAndFlush(User.builder()
                 .provider(UserProvider.LOCAL)
                 .email("plan-test-other-" + UUID.randomUUID() + "@example.com")
                 .nickname("other-" + UUID.randomUUID().toString().substring(0, 8))
                 .role(UserRole.USER)
                 .build());
-        return jwtTokenProvider.createAccessToken(otherUser.getUserId(), otherUser.getRole().name());
     }
 }

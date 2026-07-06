@@ -2,6 +2,7 @@ package com.planmate.domain.plan.service;
 
 import com.planmate.common.exception.domain.AuthenticationRequiredException;
 import com.planmate.common.exception.domain.DestinationNotFoundException;
+import com.planmate.common.exception.domain.PlanAccessDeniedException;
 import com.planmate.common.exception.domain.PlanDuplicateBlockTimeException;
 import com.planmate.common.exception.domain.PlanDuplicateDateException;
 import com.planmate.common.exception.domain.PlanInvalidBlockDateException;
@@ -13,6 +14,7 @@ import com.planmate.domain.plan.dto.CreatePlanFrameRequest;
 import com.planmate.domain.plan.dto.CreatePlanFrameResponse;
 import com.planmate.domain.plan.dto.CreatePlanRequest;
 import com.planmate.domain.plan.dto.CreatePlanResponse;
+import com.planmate.domain.plan.dto.DeleteMultiplePlansResponse;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.dto.PlanFrameDetailDto;
@@ -187,6 +189,32 @@ public class PlanService {
                 .toList();
 
         return new GetCompletePlanResponse(PlanFrameDetailDto.from(plan), timetables, placeBlocks);
+    }
+
+    @PreAuthorize("@planAccessValidator.validateOwner(#planId, authentication.principal)")
+    @Transactional
+    public void deletePlan(UUID planId) {
+        Plan plan = planRepository.findById(planId)
+                .orElseThrow(PlanNotFoundException::new);
+        plan.softDelete();
+    }
+
+    @Transactional
+    public DeleteMultiplePlansResponse deleteMultiplePlans(UUID userId, List<UUID> planIds) {
+        List<PlanMember> ownedMemberships = planMemberRepository
+                .findByUserUserIdAndRoleAndPlanPlanIdIn(userId, PlanMemberRole.OWNER, planIds);
+
+        if (ownedMemberships.isEmpty()) {
+            throw new PlanAccessDeniedException();
+        }
+
+        List<UUID> deletedPlanIds = ownedMemberships.stream()
+                .map(PlanMember::getPlan)
+                .peek(Plan::softDelete)
+                .map(Plan::getPlanId)
+                .toList();
+
+        return new DeleteMultiplePlansResponse(deletedPlanIds);
     }
 
     private Plan buildPlan(Destination destination, User user,

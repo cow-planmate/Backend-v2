@@ -14,6 +14,7 @@ import com.planmate.domain.plan.dto.CreatePlanFrameRequest;
 import com.planmate.domain.plan.dto.CreatePlanFrameResponse;
 import com.planmate.domain.plan.dto.CreatePlanRequest;
 import com.planmate.domain.plan.dto.CreatePlanResponse;
+import com.planmate.domain.plan.dto.DeleteMultiplePlansResponse;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.dto.PlanFrameDto;
@@ -62,6 +63,7 @@ class PlanServiceTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID PLAN_ID = UUID.randomUUID();
+    private static final UUID PLAN_ID_2 = UUID.randomUUID();
     private static final Integer DESTINATION_ID = 1;
 
     @Mock
@@ -443,5 +445,55 @@ class PlanServiceTest {
                 .isShared(isShared)
                 .destination(destination())
                 .build();
+    }
+
+    // ---------- deletePlan (#28) ----------
+
+    @Test
+    @DisplayName("플랜 삭제 성공 - 소프트 삭제(deletedAt 설정)")
+    void deletePlan_success() {
+        Plan plan = savedPlanStub();
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+
+        planService.deletePlan(PLAN_ID);
+
+        assertThat(plan.isDeleted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("플랜 삭제 실패 - 플랜 없음")
+    void deletePlan_fail_planNotFound() {
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> planService.deletePlan(PLAN_ID))
+                .isInstanceOf(PlanNotFoundException.class);
+    }
+
+    // ---------- deleteMultiplePlans (#30) ----------
+
+    @Test
+    @DisplayName("플랜 다중 삭제 성공 - 소유한 플랜만 삭제되고 deletedPlanIds로 반환")
+    void deleteMultiplePlans_success() {
+        Plan ownedPlan = Plan.builder().planId(PLAN_ID).build();
+        PlanMember ownedMembership = PlanMember.builder().plan(ownedPlan).user(user()).role(PlanMemberRole.OWNER).build();
+        given(planMemberRepository.findByUserUserIdAndRoleAndPlanPlanIdIn(
+                USER_ID, PlanMemberRole.OWNER, List.of(PLAN_ID, PLAN_ID_2)))
+                .willReturn(List.of(ownedMembership));
+
+        DeleteMultiplePlansResponse response = planService.deleteMultiplePlans(USER_ID, List.of(PLAN_ID, PLAN_ID_2));
+
+        assertThat(response.deletedPlanIds()).containsExactly(PLAN_ID);
+        assertThat(ownedPlan.isDeleted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("플랜 다중 삭제 실패 - 소유한 플랜이 하나도 없으면 403")
+    void deleteMultiplePlans_fail_noneOwned() {
+        given(planMemberRepository.findByUserUserIdAndRoleAndPlanPlanIdIn(
+                USER_ID, PlanMemberRole.OWNER, List.of(PLAN_ID)))
+                .willReturn(List.of());
+
+        assertThatThrownBy(() -> planService.deleteMultiplePlans(USER_ID, List.of(PLAN_ID)))
+                .isInstanceOf(PlanAccessDeniedException.class);
     }
 }

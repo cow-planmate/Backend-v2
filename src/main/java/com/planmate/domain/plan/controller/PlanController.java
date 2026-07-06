@@ -4,6 +4,8 @@ import com.planmate.domain.plan.dto.CreatePlanFrameRequest;
 import com.planmate.domain.plan.dto.CreatePlanFrameResponse;
 import com.planmate.domain.plan.dto.CreatePlanRequest;
 import com.planmate.domain.plan.dto.CreatePlanResponse;
+import com.planmate.domain.plan.dto.DeleteMultiplePlansRequest;
+import com.planmate.domain.plan.dto.DeleteMultiplePlansResponse;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.service.PlanService;
@@ -12,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -52,5 +55,19 @@ public class PlanController {
             @AuthenticationPrincipal(errorOnInvalidType = false) UUID userId,
             @PathVariable UUID planId) {
         return ResponseEntity.ok(planService.getCompletePlan(userId, planId));
+    }
+
+    @DeleteMapping("/{planId}")
+    public ResponseEntity<Void> deletePlan(@PathVariable UUID planId) {
+        planService.deletePlan(planId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping
+    public ResponseEntity<DeleteMultiplePlansResponse> deleteMultiplePlans(
+            @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody DeleteMultiplePlansRequest request) {
+        DeleteMultiplePlansResponse response = planService.deleteMultiplePlans(userId, request.planIds());
+        return ResponseEntity.ok(response);
     }
 }

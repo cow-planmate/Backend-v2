@@ -58,4 +58,9 @@ public interface PlanMemberRepository extends JpaRepository<PlanMember, Long> {
 
     // 플랜 멤버 수 (편집자 추가 상한선 검증 등)
     long countByPlanPlanId(UUID planId);
+
+    // 플랜 다중 삭제(#30) — 요청한 planId 중 이 사용자가 OWNER인 것만 조회, plan 즉시 로딩(softDelete() 호출 위해)
+    // 존재하지 않거나 이미 소프트 삭제된 플랜은 Plan의 @SQLRestriction으로 자동 제외됨
+    @EntityGraph(attributePaths = {"plan"})
+    List<PlanMember> findByUserUserIdAndRoleAndPlanPlanIdIn(UUID userId, PlanMemberRole role, List<UUID> planIds);
 }
