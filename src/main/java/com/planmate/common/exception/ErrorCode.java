@@ -35,6 +35,12 @@ public enum ErrorCode {
     // 플랜
     PLAN_NOT_FOUND(HttpStatus.NOT_FOUND, "PLAN_001", "플랜을 찾을 수 없습니다."),
     PLAN_ACCESS_DENIED(HttpStatus.FORBIDDEN, "PLAN_002", "플랜에 대한 접근 권한이 없습니다."),
+    PLAN_DUPLICATE_DATE(HttpStatus.BAD_REQUEST, "PLAN_003", "중복된 날짜가 포함되어 있습니다."),
+    PLAN_DUPLICATE_BLOCK_TIME(HttpStatus.BAD_REQUEST, "PLAN_004", "동일한 일자·시간에 중복된 블록이 있습니다."),
+    PLAN_INVALID_BLOCK_DATE(HttpStatus.BAD_REQUEST, "PLAN_005", "블록의 날짜가 일정표 목록에 없습니다."),
+
+    // 여행지
+    DESTINATION_NOT_FOUND(HttpStatus.NOT_FOUND, "DEST_001", "존재하지 않는 여행지입니다."),
 
     // 협업 요청
     COLLABORATION_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "COLLAB_001", "협업 요청을 찾을 수 없습니다."),
