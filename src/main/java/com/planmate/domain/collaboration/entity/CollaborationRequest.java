@@ -62,4 +62,21 @@ public class CollaborationRequest extends BaseTimeEntity {
     public void reject() {
         this.status = CollaborationRequestStatus.REJECTED;
     }
+
+    // 수락 시 새로 편집자가 되는 사람 — INVITE는 초대받은 사람(receiver), REQUEST는 요청을 보낸 사람(sender)
+    public User getTargetUserForAcceptance() {
+        return switch (this.type) {
+            case INVITE -> this.receiver;
+            case REQUEST -> this.sender;
+        };
+    }
+
+    // plan_member.invited_by에 들어갈, 이 멤버십을 승인한 기존 멤버 — getTargetUserForAcceptance()와 반대 방향
+    // (데이터베이스_설계_v2.md 1.11절: INVITE 수락은 sender_id, REQUEST 수락은 receiver_id)
+    public User getApprover() {
+        return switch (this.type) {
+            case INVITE -> this.sender;
+            case REQUEST -> this.receiver;
+        };
+    }
 }

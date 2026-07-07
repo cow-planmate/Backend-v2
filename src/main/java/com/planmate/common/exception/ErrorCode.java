@@ -47,6 +47,8 @@ public enum ErrorCode {
     COLLABORATION_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "COLLAB_001", "협업 요청을 찾을 수 없습니다."),
     COLLABORATION_REQUEST_ALREADY_MEMBER(HttpStatus.CONFLICT, "COLLAB_002", "이미 플랜에 대한 접근 권한이 있는 사용자입니다."),
     COLLABORATION_REQUEST_DUPLICATE_PENDING(HttpStatus.CONFLICT, "COLLAB_003", "이미 처리 대기 중인 요청이 있습니다."),
+    COLLABORATION_REQUEST_ACCESS_DENIED(HttpStatus.FORBIDDEN, "COLLAB_004", "해당 요청을 처리할 권한이 없습니다."),
+    COLLABORATION_REQUEST_ALREADY_PROCESSED(HttpStatus.CONFLICT, "COLLAB_005", "이미 처리된 요청입니다."),
 
     // OAuth
     OAUTH_UNSUPPORTED_PROVIDER(HttpStatus.BAD_REQUEST, "OAUTH_001", "지원하지 않는 SNS 로그인입니다."),

@@ -1,16 +1,23 @@
 package com.planmate.domain.collaboration.service;
 
 import com.planmate.common.exception.domain.CollaborationRequestAlreadyMemberException;
+import com.planmate.common.exception.domain.CollaborationRequestAlreadyProcessedException;
 import com.planmate.common.exception.domain.CollaborationRequestDuplicatePendingException;
+import com.planmate.common.exception.domain.CollaborationRequestNotFoundException;
 import com.planmate.common.exception.domain.PlanNotFoundException;
 import com.planmate.common.exception.domain.UserNotFoundException;
+import com.planmate.domain.collaboration.dto.AcceptRequestResponse;
+import com.planmate.domain.collaboration.dto.GetReceivedPendingRequestsResponse;
 import com.planmate.domain.collaboration.dto.InviteUserToPlanResponse;
+import com.planmate.domain.collaboration.dto.RejectRequestResponse;
 import com.planmate.domain.collaboration.dto.RequestEditAccessResponse;
 import com.planmate.domain.collaboration.entity.CollaborationRequest;
 import com.planmate.domain.collaboration.enums.CollaborationRequestStatus;
 import com.planmate.domain.collaboration.enums.CollaborationRequestType;
 import com.planmate.domain.collaboration.repository.CollaborationRequestRepository;
 import com.planmate.domain.plan.entity.Plan;
+import com.planmate.domain.plan.entity.PlanMember;
+import com.planmate.domain.plan.enums.PlanMemberRole;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.user.entity.User;
@@ -23,6 +30,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -71,6 +79,18 @@ class CollaborationRequestServiceTest {
 
     private CollaborationRequest savedRequestStub() {
         return CollaborationRequest.builder().collaborationRequestId(1L).build();
+    }
+
+    private CollaborationRequest requestStub(Long id, CollaborationRequestType type, CollaborationRequestStatus status,
+            User sender, User receiver, Plan plan) {
+        return CollaborationRequest.builder()
+                .collaborationRequestId(id)
+                .type(type)
+                .status(status)
+                .sender(sender)
+                .receiver(receiver)
+                .plan(plan)
+                .build();
     }
 
     // ---------- inviteUserToPlan (#37) ----------
@@ -235,5 +255,187 @@ class CollaborationRequestServiceTest {
         assertThatThrownBy(() -> collaborationRequestService.requestEditAccess(PLAN_ID, SENDER_ID))
                 .isInstanceOf(CollaborationRequestDuplicatePendingException.class);
         verify(collaborationRequestRepository, never()).save(any());
+    }
+
+    // ---------- getReceivedPendingRequests (#39) ----------
+
+    @Test
+    @DisplayName("받은 대기 요청 목록 조회 성공 - INVITE/REQUEST 섞여서 매핑됨")
+    void getReceivedPendingRequests_success() {
+        Plan plan = planStub(owner());
+        CollaborationRequest invite = requestStub(1L, CollaborationRequestType.INVITE, CollaborationRequestStatus.PENDING,
+                owner(), sender(), plan);
+        given(collaborationRequestRepository.findByReceiverUserIdAndStatus(OWNER_ID, CollaborationRequestStatus.PENDING))
+                .willReturn(List.of(invite));
+
+        GetReceivedPendingRequestsResponse response = collaborationRequestService.getReceivedPendingRequests(OWNER_ID);
+
+        assertThat(response.requests()).hasSize(1);
+        assertThat(response.requests().get(0).collaborationRequestId()).isEqualTo(1L);
+        assertThat(response.requests().get(0).senderId()).isEqualTo(OWNER_ID);
+        assertThat(response.requests().get(0).type()).isEqualTo(CollaborationRequestType.INVITE);
+    }
+
+    @Test
+    @DisplayName("받은 대기 요청 목록 조회 성공 - 대기 중인 요청 없으면 빈 리스트")
+    void getReceivedPendingRequests_success_empty() {
+        given(collaborationRequestRepository.findByReceiverUserIdAndStatus(OWNER_ID, CollaborationRequestStatus.PENDING))
+                .willReturn(List.of());
+
+        GetReceivedPendingRequestsResponse response = collaborationRequestService.getReceivedPendingRequests(OWNER_ID);
+
+        assertThat(response.requests()).isEmpty();
+    }
+
+    // ---------- acceptRequest (#40) ----------
+
+    @Test
+    @DisplayName("요청 수락 성공 - INVITE 타입: 받는 사람(receiver)이 새 편집자, invited_by=sender")
+    void acceptRequest_success_inviteType() {
+        Plan plan = planStub(owner());
+        CollaborationRequest request = requestStub(1L, CollaborationRequestType.INVITE, CollaborationRequestStatus.PENDING,
+                owner(), receiver(), plan);
+        given(collaborationRequestRepository.findById(1L)).willReturn(Optional.of(request));
+        given(userRepository.findById(RECEIVER_ID)).willReturn(Optional.of(receiver()));
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+        given(planMemberRepository.existsByPlanPlanIdAndUserUserId(PLAN_ID, RECEIVER_ID)).willReturn(false);
+
+        AcceptRequestResponse response = collaborationRequestService.acceptRequest(1L);
+
+        assertThat(response.planId()).isEqualTo(PLAN_ID);
+        assertThat(request.getStatus()).isEqualTo(CollaborationRequestStatus.ACCEPTED);
+
+        ArgumentCaptor<PlanMember> captor = ArgumentCaptor.forClass(PlanMember.class);
+        verify(planMemberRepository).save(captor.capture());
+        assertThat(captor.getValue().getUser().getUserId()).isEqualTo(RECEIVER_ID);
+        assertThat(captor.getValue().getRole()).isEqualTo(PlanMemberRole.EDITOR);
+        assertThat(captor.getValue().getInvitedBy().getUserId()).isEqualTo(OWNER_ID);
+    }
+
+    @Test
+    @DisplayName("요청 수락 성공 - REQUEST 타입: 보낸 사람(sender)이 새 편집자, invited_by=receiver(오너)")
+    void acceptRequest_success_requestType() {
+        Plan plan = planStub(owner());
+        CollaborationRequest request = requestStub(1L, CollaborationRequestType.REQUEST, CollaborationRequestStatus.PENDING,
+                sender(), owner(), plan);
+        given(collaborationRequestRepository.findById(1L)).willReturn(Optional.of(request));
+        given(userRepository.findById(SENDER_ID)).willReturn(Optional.of(sender()));
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+        given(planMemberRepository.existsByPlanPlanIdAndUserUserId(PLAN_ID, SENDER_ID)).willReturn(false);
+
+        AcceptRequestResponse response = collaborationRequestService.acceptRequest(1L);
+
+        assertThat(response.planId()).isEqualTo(PLAN_ID);
+
+        ArgumentCaptor<PlanMember> captor = ArgumentCaptor.forClass(PlanMember.class);
+        verify(planMemberRepository).save(captor.capture());
+        assertThat(captor.getValue().getUser().getUserId()).isEqualTo(SENDER_ID);
+        assertThat(captor.getValue().getInvitedBy().getUserId()).isEqualTo(OWNER_ID);
+    }
+
+    @Test
+    @DisplayName("요청 수락 성공 - 이미 편집자인 경우 PlanMember 재삽입 없이 상태만 ACCEPTED로 변경(원본 idempotent 동작 유지)")
+    void acceptRequest_success_alreadyMemberSkipsInsert() {
+        Plan plan = planStub(owner());
+        CollaborationRequest request = requestStub(1L, CollaborationRequestType.INVITE, CollaborationRequestStatus.PENDING,
+                owner(), receiver(), plan);
+        given(collaborationRequestRepository.findById(1L)).willReturn(Optional.of(request));
+        given(userRepository.findById(RECEIVER_ID)).willReturn(Optional.of(receiver()));
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
+        given(planMemberRepository.existsByPlanPlanIdAndUserUserId(PLAN_ID, RECEIVER_ID)).willReturn(true);
+
+        collaborationRequestService.acceptRequest(1L);
+
+        assertThat(request.getStatus()).isEqualTo(CollaborationRequestStatus.ACCEPTED);
+        verify(planMemberRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("요청 수락 실패 - 요청 없음")
+    void acceptRequest_fail_requestNotFound() {
+        given(collaborationRequestRepository.findById(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> collaborationRequestService.acceptRequest(1L))
+                .isInstanceOf(CollaborationRequestNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("요청 수락 실패 - 이미 처리된 요청(ACCEPTED)")
+    void acceptRequest_fail_alreadyProcessed() {
+        Plan plan = planStub(owner());
+        CollaborationRequest request = requestStub(1L, CollaborationRequestType.INVITE, CollaborationRequestStatus.ACCEPTED,
+                owner(), receiver(), plan);
+        given(collaborationRequestRepository.findById(1L)).willReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> collaborationRequestService.acceptRequest(1L))
+                .isInstanceOf(CollaborationRequestAlreadyProcessedException.class);
+        verify(planMemberRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("요청 수락 실패 - 연결된 플랜이 그사이 소프트 삭제됨(방어적 재확인)")
+    void acceptRequest_fail_planNotFound() {
+        Plan plan = planStub(owner());
+        CollaborationRequest request = requestStub(1L, CollaborationRequestType.INVITE, CollaborationRequestStatus.PENDING,
+                owner(), receiver(), plan);
+        given(collaborationRequestRepository.findById(1L)).willReturn(Optional.of(request));
+        given(userRepository.findById(RECEIVER_ID)).willReturn(Optional.of(receiver()));
+        given(planRepository.findById(PLAN_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> collaborationRequestService.acceptRequest(1L))
+                .isInstanceOf(PlanNotFoundException.class);
+        verify(planMemberRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("요청 수락 실패 - 새 편집자가 될 대상이 그사이 탈퇴(소프트 삭제)됨(17장 도메인 전체 점검에서 발견 — 유령 plan_member 생성 방지)")
+    void acceptRequest_fail_targetUserWithdrawn() {
+        Plan plan = planStub(owner());
+        CollaborationRequest request = requestStub(1L, CollaborationRequestType.INVITE, CollaborationRequestStatus.PENDING,
+                owner(), receiver(), plan);
+        given(collaborationRequestRepository.findById(1L)).willReturn(Optional.of(request));
+        given(userRepository.findById(RECEIVER_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> collaborationRequestService.acceptRequest(1L))
+                .isInstanceOf(UserNotFoundException.class);
+        verify(planMemberRepository, never()).save(any());
+    }
+
+    // ---------- rejectRequest (#41) ----------
+
+    @Test
+    @DisplayName("요청 거절 성공 - 상태만 REJECTED로 변경, 멤버십 변경 없음")
+    void rejectRequest_success() {
+        Plan plan = planStub(owner());
+        CollaborationRequest request = requestStub(1L, CollaborationRequestType.INVITE, CollaborationRequestStatus.PENDING,
+                owner(), receiver(), plan);
+        given(collaborationRequestRepository.findById(1L)).willReturn(Optional.of(request));
+
+        RejectRequestResponse response = collaborationRequestService.rejectRequest(1L);
+
+        assertThat(response.collaborationRequestId()).isEqualTo(1L);
+        assertThat(request.getStatus()).isEqualTo(CollaborationRequestStatus.REJECTED);
+        verify(planMemberRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("요청 거절 실패 - 요청 없음")
+    void rejectRequest_fail_requestNotFound() {
+        given(collaborationRequestRepository.findById(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> collaborationRequestService.rejectRequest(1L))
+                .isInstanceOf(CollaborationRequestNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("요청 거절 실패 - 이미 처리된 요청(REJECTED)")
+    void rejectRequest_fail_alreadyProcessed() {
+        Plan plan = planStub(owner());
+        CollaborationRequest request = requestStub(1L, CollaborationRequestType.INVITE, CollaborationRequestStatus.REJECTED,
+                owner(), receiver(), plan);
+        given(collaborationRequestRepository.findById(1L)).willReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> collaborationRequestService.rejectRequest(1L))
+                .isInstanceOf(CollaborationRequestAlreadyProcessedException.class);
     }
 }
