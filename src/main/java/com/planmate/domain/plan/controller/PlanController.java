@@ -8,6 +8,7 @@ import com.planmate.domain.plan.dto.DeleteMultiplePlansRequest;
 import com.planmate.domain.plan.dto.DeleteMultiplePlansResponse;
 import com.planmate.domain.plan.dto.EditPlanNameRequest;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
+import com.planmate.domain.plan.dto.GetEditorsResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.dto.GetShareStatusResponse;
 import com.planmate.domain.plan.dto.UpdateShareRequest;
@@ -92,5 +93,22 @@ public class PlanController {
                                              @Valid @RequestBody UpdateShareRequest request) {
         planService.updateShare(planId, request.isShared());
         return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{planId}/editor/me")
+    public ResponseEntity<Void> resignEditorAccess(@AuthenticationPrincipal UUID userId, @PathVariable UUID planId) {
+        planService.resignEditorAccess(planId, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{planId}/editors/{targetUserId}")
+    public ResponseEntity<Void> removeEditorAccessByOwner(@PathVariable UUID planId, @PathVariable UUID targetUserId) {
+        planService.removeEditorAccessByOwner(planId, targetUserId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{planId}/editors")
+    public ResponseEntity<GetEditorsResponse> getEditors(@PathVariable UUID planId) {
+        return ResponseEntity.ok(planService.getEditors(planId));
     }
 }

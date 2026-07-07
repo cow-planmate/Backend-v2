@@ -6,6 +6,7 @@ import com.planmate.common.exception.domain.PlanAccessDeniedException;
 import com.planmate.common.exception.domain.PlanDuplicateBlockTimeException;
 import com.planmate.common.exception.domain.PlanDuplicateDateException;
 import com.planmate.common.exception.domain.PlanInvalidBlockDateException;
+import com.planmate.common.exception.domain.PlanMemberNotFoundException;
 import com.planmate.common.exception.domain.PlanNotFoundException;
 import com.planmate.common.exception.domain.UserNotFoundException;
 import com.planmate.domain.destination.entity.Destination;
@@ -16,6 +17,7 @@ import com.planmate.domain.plan.dto.CreatePlanRequest;
 import com.planmate.domain.plan.dto.CreatePlanResponse;
 import com.planmate.domain.plan.dto.DeleteMultiplePlansResponse;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
+import com.planmate.domain.plan.dto.GetEditorsResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.dto.GetShareStatusResponse;
 import com.planmate.domain.plan.dto.PlanFrameDto;
@@ -582,5 +584,95 @@ class PlanServiceTest {
 
         assertThatThrownBy(() -> planService.updateShare(PLAN_ID, true))
                 .isInstanceOf(PlanNotFoundException.class);
+    }
+
+    // ---------- resignEditorAccess (#34) ----------
+
+    @Test
+    @DisplayName("본인 편집 권한 포기 성공")
+    void resignEditorAccess_success() {
+        PlanMember member = PlanMember.builder().plan(savedPlanStub()).user(user()).role(PlanMemberRole.EDITOR).build();
+        given(planRepository.existsById(PLAN_ID)).willReturn(true);
+        given(planMemberRepository.findByPlanPlanIdAndUserUserIdAndRole(PLAN_ID, USER_ID, PlanMemberRole.EDITOR))
+                .willReturn(Optional.of(member));
+
+        planService.resignEditorAccess(PLAN_ID, USER_ID);
+
+        verify(planMemberRepository).delete(member);
+    }
+
+    @Test
+    @DisplayName("본인 편집 권한 포기 실패 - 플랜 없음")
+    void resignEditorAccess_fail_planNotFound() {
+        given(planRepository.existsById(PLAN_ID)).willReturn(false);
+
+        assertThatThrownBy(() -> planService.resignEditorAccess(PLAN_ID, USER_ID))
+                .isInstanceOf(PlanNotFoundException.class);
+        verify(planMemberRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("본인 편집 권한 포기 실패 - 편집자가 아님(소유자 포함)")
+    void resignEditorAccess_fail_notEditor() {
+        given(planRepository.existsById(PLAN_ID)).willReturn(true);
+        given(planMemberRepository.findByPlanPlanIdAndUserUserIdAndRole(PLAN_ID, USER_ID, PlanMemberRole.EDITOR))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> planService.resignEditorAccess(PLAN_ID, USER_ID))
+                .isInstanceOf(PlanMemberNotFoundException.class);
+    }
+
+    // ---------- removeEditorAccessByOwner (#35) ----------
+
+    @Test
+    @DisplayName("편집자 권한 박탈 성공")
+    void removeEditorAccessByOwner_success() {
+        UUID targetUserId = UUID.randomUUID();
+        PlanMember member = PlanMember.builder().plan(savedPlanStub()).user(user()).role(PlanMemberRole.EDITOR).build();
+        given(planMemberRepository.findByPlanPlanIdAndUserUserIdAndRole(PLAN_ID, targetUserId, PlanMemberRole.EDITOR))
+                .willReturn(Optional.of(member));
+
+        planService.removeEditorAccessByOwner(PLAN_ID, targetUserId);
+
+        verify(planMemberRepository).delete(member);
+    }
+
+    @Test
+    @DisplayName("편집자 권한 박탈 실패 - 대상이 편집자가 아님(소유자 자기 자신 포함)")
+    void removeEditorAccessByOwner_fail_targetNotEditor() {
+        UUID targetUserId = UUID.randomUUID();
+        given(planMemberRepository.findByPlanPlanIdAndUserUserIdAndRole(PLAN_ID, targetUserId, PlanMemberRole.EDITOR))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> planService.removeEditorAccessByOwner(PLAN_ID, targetUserId))
+                .isInstanceOf(PlanMemberNotFoundException.class);
+    }
+
+    // ---------- getEditors (#36) ----------
+
+    @Test
+    @DisplayName("편집자 목록 조회 성공 - EDITOR만 포함, OWNER 제외")
+    void getEditors_success() {
+        User editorUser = User.builder().userId(UUID.randomUUID()).nickname("editor-tester").build();
+        PlanMember editorMember = PlanMember.builder().plan(savedPlanStub()).user(editorUser).role(PlanMemberRole.EDITOR).build();
+        given(planMemberRepository.findByPlanPlanIdAndRole(PLAN_ID, PlanMemberRole.EDITOR))
+                .willReturn(List.of(editorMember));
+
+        GetEditorsResponse response = planService.getEditors(PLAN_ID);
+
+        assertThat(response.editors()).hasSize(1);
+        assertThat(response.editors().get(0).userId()).isEqualTo(editorUser.getUserId());
+        assertThat(response.editors().get(0).nickname()).isEqualTo("editor-tester");
+    }
+
+    @Test
+    @DisplayName("편집자 목록 조회 성공 - 편집자 없으면 빈 리스트")
+    void getEditors_success_empty() {
+        given(planMemberRepository.findByPlanPlanIdAndRole(PLAN_ID, PlanMemberRole.EDITOR))
+                .willReturn(List.of());
+
+        GetEditorsResponse response = planService.getEditors(PLAN_ID);
+
+        assertThat(response.editors()).isEmpty();
     }
 }

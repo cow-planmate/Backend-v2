@@ -63,4 +63,12 @@ public interface PlanMemberRepository extends JpaRepository<PlanMember, Long> {
     // 존재하지 않거나 이미 소프트 삭제된 플랜은 Plan의 @SQLRestriction으로 자동 제외됨
     @EntityGraph(attributePaths = {"plan"})
     List<PlanMember> findByUserUserIdAndRoleAndPlanPlanIdIn(UUID userId, PlanMemberRole role, List<UUID> planIds);
+
+    // 본인 편집 권한 포기(#34) / 편집자 권한 박탈(#35) 공용 — 이 사용자가 이 플랜에서 정확히 이 역할인지 확인
+    // role 조건이 있어 OWNER 행은 절대 걸리지 않음(plan_member/A_권한.md 10-1절 근거)
+    Optional<PlanMember> findByPlanPlanIdAndUserUserIdAndRole(UUID planId, UUID userId, PlanMemberRole role);
+
+    // 편집자 목록 조회(#36) — role=EDITOR인 멤버만, user 즉시 로딩(N+1 방지)
+    @EntityGraph(attributePaths = {"user"})
+    List<PlanMember> findByPlanPlanIdAndRole(UUID planId, PlanMemberRole role);
 }

@@ -761,6 +761,181 @@ class PlanControllerTest {
                 .andExpect(jsonPath("$.code").value("PLAN_001"));
     }
 
+    // ---------- #34 resignEditorAccess ----------
+
+    @Test
+    @DisplayName("본인 편집 권한 포기 성공 - 204, DB 반영 확인")
+    void resignEditorAccess_success() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User editor = createOtherUser();
+        planMemberRepository.saveAndFlush(PlanMember.builder()
+                .plan(plan)
+                .user(editor)
+                .role(PlanMemberRole.EDITOR)
+                .build());
+        String editorToken = jwtTokenProvider.createAccessToken(editor.getUserId(), editor.getRole().name());
+
+        mockMvc.perform(delete("/api/plan/{planId}/editor/me", plan.getPlanId())
+                        .header("Authorization", "Bearer " + editorToken))
+                .andExpect(status().isNoContent());
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(planMemberRepository.findByPlanPlanIdAndUserUserId(plan.getPlanId(), editor.getUserId()))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("본인 편집 권한 포기 실패 - 인증 토큰 없으면 401")
+    void resignEditorAccess_fail_noAuth() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(delete("/api/plan/{planId}/editor/me", plan.getPlanId()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("본인 편집 권한 포기 실패 - 소유자가 호출하면 편집자가 아니므로 404")
+    void resignEditorAccess_fail_ownerIsNotEditor() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(delete("/api/plan/{planId}/editor/me", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_006"));
+    }
+
+    @Test
+    @DisplayName("본인 편집 권한 포기 실패 - 존재하지 않는 플랜이면 404")
+    void resignEditorAccess_fail_planNotFound() throws Exception {
+        mockMvc.perform(delete("/api/plan/{planId}/editor/me", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    // ---------- #35 removeEditorAccessByOwner ----------
+
+    @Test
+    @DisplayName("편집자 권한 박탈 성공 - 204, DB 반영 확인")
+    void removeEditorAccessByOwner_success() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User editor = createOtherUser();
+        planMemberRepository.saveAndFlush(PlanMember.builder()
+                .plan(plan)
+                .user(editor)
+                .role(PlanMemberRole.EDITOR)
+                .build());
+
+        mockMvc.perform(delete("/api/plan/{planId}/editors/{targetUserId}", plan.getPlanId(), editor.getUserId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNoContent());
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(planMemberRepository.findByPlanPlanIdAndUserUserId(plan.getPlanId(), editor.getUserId()))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("편집자 권한 박탈 실패 - 인증 토큰 없으면 401")
+    void removeEditorAccessByOwner_fail_noAuth() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User editor = createOtherUser();
+
+        mockMvc.perform(delete("/api/plan/{planId}/editors/{targetUserId}", plan.getPlanId(), editor.getUserId()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("편집자 권한 박탈 실패 - 편집자(EDITOR)는 소유자가 아니므로 403")
+    void removeEditorAccessByOwner_fail_notOwner() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User editor = createOtherUser();
+        planMemberRepository.saveAndFlush(PlanMember.builder()
+                .plan(plan)
+                .user(editor)
+                .role(PlanMemberRole.EDITOR)
+                .build());
+        String editorToken = jwtTokenProvider.createAccessToken(editor.getUserId(), editor.getRole().name());
+
+        mockMvc.perform(delete("/api/plan/{planId}/editors/{targetUserId}", plan.getPlanId(), editor.getUserId())
+                        .header("Authorization", "Bearer " + editorToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_002"));
+    }
+
+    @Test
+    @DisplayName("편집자 권한 박탈 실패 - 대상이 소유자 자기 자신이면 편집자가 아니므로 404")
+    void removeEditorAccessByOwner_fail_targetIsOwnerSelf() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(delete("/api/plan/{planId}/editors/{targetUserId}", plan.getPlanId(), testUser.getUserId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_006"));
+    }
+
+    @Test
+    @DisplayName("편집자 권한 박탈 실패 - 존재하지 않는 플랜이면 404")
+    void removeEditorAccessByOwner_fail_planNotFound() throws Exception {
+        mockMvc.perform(delete("/api/plan/{planId}/editors/{targetUserId}", UUID.randomUUID(), UUID.randomUUID())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    // ---------- #36 getEditors ----------
+
+    @Test
+    @DisplayName("편집자 목록 조회 성공 - EDITOR만 포함, OWNER 제외")
+    void getEditors_success() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User editor = createOtherUser();
+        planMemberRepository.saveAndFlush(PlanMember.builder()
+                .plan(plan)
+                .user(editor)
+                .role(PlanMemberRole.EDITOR)
+                .build());
+
+        mockMvc.perform(get("/api/plan/{planId}/editors", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.editors.length()").value(1))
+                .andExpect(jsonPath("$.editors[0].userId").value(editor.getUserId().toString()))
+                .andExpect(jsonPath("$.editors[0].nickname").value(editor.getNickname()));
+    }
+
+    @Test
+    @DisplayName("편집자 목록 조회 실패 - 인증 토큰 없으면 401")
+    void getEditors_fail_noAuth() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(get("/api/plan/{planId}/editors", plan.getPlanId()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("편집자 목록 조회 실패 - 멤버가 아니면 403")
+    void getEditors_fail_notMember() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        String otherToken = createOtherUserToken();
+
+        mockMvc.perform(get("/api/plan/{planId}/editors", plan.getPlanId())
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_002"));
+    }
+
+    @Test
+    @DisplayName("편집자 목록 조회 실패 - 존재하지 않는 플랜이면 404")
+    void getEditors_fail_planNotFound() throws Exception {
+        mockMvc.perform(get("/api/plan/{planId}/editors", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
     private Plan createTestPlan(boolean isShared, User owner) {
         Plan plan = planRepository.saveAndFlush(Plan.builder()
                 .planName("테스트 플랜")
