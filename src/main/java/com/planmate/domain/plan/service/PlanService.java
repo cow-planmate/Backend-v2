@@ -6,6 +6,7 @@ import com.planmate.common.exception.domain.PlanAccessDeniedException;
 import com.planmate.common.exception.domain.PlanDuplicateBlockTimeException;
 import com.planmate.common.exception.domain.PlanDuplicateDateException;
 import com.planmate.common.exception.domain.PlanInvalidBlockDateException;
+import com.planmate.common.exception.domain.PlanMemberNotFoundException;
 import com.planmate.common.exception.domain.PlanNotFoundException;
 import com.planmate.common.exception.domain.UserNotFoundException;
 import com.planmate.domain.destination.entity.Destination;
@@ -15,7 +16,9 @@ import com.planmate.domain.plan.dto.CreatePlanFrameResponse;
 import com.planmate.domain.plan.dto.CreatePlanRequest;
 import com.planmate.domain.plan.dto.CreatePlanResponse;
 import com.planmate.domain.plan.dto.DeleteMultiplePlansResponse;
+import com.planmate.domain.plan.dto.EditorDto;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
+import com.planmate.domain.plan.dto.GetEditorsResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.dto.GetShareStatusResponse;
 import com.planmate.domain.plan.dto.PlanFrameDetailDto;
@@ -244,6 +247,35 @@ public class PlanService {
         } else {
             plan.unshare();
         }
+    }
+
+    @Transactional
+    public void resignEditorAccess(UUID planId, UUID userId) {
+        if (!planRepository.existsById(planId)) {
+            throw new PlanNotFoundException();
+        }
+        PlanMember member = planMemberRepository
+                .findByPlanPlanIdAndUserUserIdAndRole(planId, userId, PlanMemberRole.EDITOR)
+                .orElseThrow(PlanMemberNotFoundException::new);
+        planMemberRepository.delete(member);
+    }
+
+    @PreAuthorize("@planAccessValidator.validateOwner(#planId, authentication.principal)")
+    @Transactional
+    public void removeEditorAccessByOwner(UUID planId, UUID targetUserId) {
+        PlanMember member = planMemberRepository
+                .findByPlanPlanIdAndUserUserIdAndRole(planId, targetUserId, PlanMemberRole.EDITOR)
+                .orElseThrow(PlanMemberNotFoundException::new);
+        planMemberRepository.delete(member);
+    }
+
+    @PreAuthorize("@planAccessValidator.validateMember(#planId, authentication.principal)")
+    @Transactional(readOnly = true)
+    public GetEditorsResponse getEditors(UUID planId) {
+        List<EditorDto> editors = planMemberRepository.findByPlanPlanIdAndRole(planId, PlanMemberRole.EDITOR).stream()
+                .map(member -> new EditorDto(member.getUser().getUserId(), member.getUser().getNickname()))
+                .toList();
+        return new GetEditorsResponse(editors);
     }
 
     private Plan buildPlan(Destination destination, User user,

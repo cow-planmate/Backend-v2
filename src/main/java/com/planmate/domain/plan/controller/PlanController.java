@@ -1,5 +1,9 @@
 package com.planmate.domain.plan.controller;
 
+import com.planmate.domain.collaboration.dto.InviteUserToPlanRequest;
+import com.planmate.domain.collaboration.dto.InviteUserToPlanResponse;
+import com.planmate.domain.collaboration.dto.RequestEditAccessResponse;
+import com.planmate.domain.collaboration.service.CollaborationRequestService;
 import com.planmate.domain.plan.dto.CreatePlanFrameRequest;
 import com.planmate.domain.plan.dto.CreatePlanFrameResponse;
 import com.planmate.domain.plan.dto.CreatePlanRequest;
@@ -8,6 +12,7 @@ import com.planmate.domain.plan.dto.DeleteMultiplePlansRequest;
 import com.planmate.domain.plan.dto.DeleteMultiplePlansResponse;
 import com.planmate.domain.plan.dto.EditPlanNameRequest;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
+import com.planmate.domain.plan.dto.GetEditorsResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.dto.GetShareStatusResponse;
 import com.planmate.domain.plan.dto.UpdateShareRequest;
@@ -34,6 +39,7 @@ import java.util.UUID;
 public class PlanController {
 
     private final PlanService planService;
+    private final CollaborationRequestService collaborationRequestService;
 
     @PostMapping
     public ResponseEntity<CreatePlanFrameResponse> createPlanFrame(@AuthenticationPrincipal UUID userId,
@@ -92,5 +98,38 @@ public class PlanController {
                                              @Valid @RequestBody UpdateShareRequest request) {
         planService.updateShare(planId, request.isShared());
         return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{planId}/editor/me")
+    public ResponseEntity<Void> resignEditorAccess(@AuthenticationPrincipal UUID userId, @PathVariable UUID planId) {
+        planService.resignEditorAccess(planId, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{planId}/editors/{targetUserId}")
+    public ResponseEntity<Void> removeEditorAccessByOwner(@PathVariable UUID planId, @PathVariable UUID targetUserId) {
+        planService.removeEditorAccessByOwner(planId, targetUserId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{planId}/editors")
+    public ResponseEntity<GetEditorsResponse> getEditors(@PathVariable UUID planId) {
+        return ResponseEntity.ok(planService.getEditors(planId));
+    }
+
+    @PostMapping("/{planId}/invite")
+    public ResponseEntity<InviteUserToPlanResponse> inviteUserToPlan(
+            @AuthenticationPrincipal UUID userId, @PathVariable UUID planId,
+            @Valid @RequestBody InviteUserToPlanRequest request) {
+        InviteUserToPlanResponse response =
+                collaborationRequestService.inviteUserToPlan(planId, userId, request.receiverNickname());
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("/{planId}/request-access")
+    public ResponseEntity<RequestEditAccessResponse> requestEditAccess(
+            @AuthenticationPrincipal UUID userId, @PathVariable UUID planId) {
+        RequestEditAccessResponse response = collaborationRequestService.requestEditAccess(planId, userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }
