@@ -37,6 +37,9 @@ dependencies {
     // Redis
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+    // Firebase Admin (FCM)
+    implementation 'com.google.firebase:firebase-admin:9.3.0'
+
     // Mail
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
