@@ -1,6 +1,5 @@
 package com.planmate.security;
 
-import com.planmate.config.SecurityWhitelist;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,12 +25,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        String uri = request.getRequestURI();
-        if (SecurityWhitelist.isWhitelisted(uri)) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
+        // 화이트리스트 여부와 무관하게 항상 토큰 파싱을 시도한다 — "누구인지 파악"은 필터의 책임,
+        // "이 경로에 인증이 필요한가"는 SecurityConfig(SecurityWhitelist)만의 책임으로 분리한다.
+        // (B_조회.md 10-2절 근거 — is_shared 기반 선택적 인증 지원을 위한 변경)
         String token = resolveToken(request);
         if (token != null && jwtTokenProvider.validateToken(token) && jwtTokenProvider.isAccessToken(token)) {
             UUID userId = jwtTokenProvider.extractUserId(token);
