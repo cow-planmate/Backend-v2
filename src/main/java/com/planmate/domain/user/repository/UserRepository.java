@@ -34,6 +34,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     // @SQLRestriction이 deleted_at IS NULL 자동 삽입 → 탈퇴 계정 닉네임 재사용 가능
     boolean existsByNickname(String nickname);
 
+    // 닉네임으로 사용자 조회 — 협업 요청 생성(초대 대상 지정, collaboration_request/A_요청_생성.md 7-2절)
+    // 활용 인덱스: uk_users_nickname ON (nickname) WHERE deleted_at IS NULL
+    // 이메일과 달리 닉네임은 대소문자 무시 정책이 없어 LOWER() 없이 그대로 조회(existsByNickname과 동일 근거)
+    Optional<User> findByNickname(String nickname);
+
     // LOCAL 이메일 중복 확인
     // @SQLRestriction 자동 삽입 → 탈퇴 후 동일 이메일 재가입 가능
     // LOWER() 명시 — uk_users_email 인덱스가 LOWER(email) 기준이라 파생 쿼리(대소문자 구분)로 두면 어긋남

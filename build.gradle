@@ -67,6 +67,9 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // JDK 17+ self-attach 제한 때문에 Mockito 5 inline mock maker(byte-buddy-agent) 초기화가
+    // 실패하는 걸 막기 위한 플래그(IDE는 자동으로 붙여주지만 Gradle CLI는 명시가 필요)
+    jvmArgs += ['-Djdk.attach.allowAttachSelf=true']
 }
 
 bootRun {

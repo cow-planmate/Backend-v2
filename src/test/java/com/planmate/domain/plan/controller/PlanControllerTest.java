@@ -1,6 +1,11 @@
 package com.planmate.domain.plan.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.planmate.domain.collaboration.entity.CollaborationRequest;
+import com.planmate.domain.collaboration.enums.CollaborationRequestStatus;
+import com.planmate.domain.collaboration.enums.CollaborationRequestType;
+import com.planmate.domain.collaboration.dto.InviteUserToPlanRequest;
+import com.planmate.domain.collaboration.repository.CollaborationRequestRepository;
 import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.plan.dto.CreatePlanFrameRequest;
@@ -37,6 +42,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +53,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -80,6 +87,8 @@ class PlanControllerTest {
     private TimeTablePlaceBlockRepository timeTablePlaceBlockRepository;
     @Autowired
     private EntityManager entityManager;
+    @Autowired
+    private CollaborationRequestRepository collaborationRequestRepository;
 
     private User testUser;
     private String accessToken;
@@ -719,9 +728,10 @@ class PlanControllerTest {
     // ---------- 도메인 전체 점검(기능_구현_표준.md 17장) — C/D그룹 교차 케이스 ----------
 
     @Test
-    @DisplayName("이미 소프트 삭제된 플랜 - 조회/수정/삭제/공유 전부 404 (C그룹 삭제 + B/C/D그룹 나머지 API 간 교차 확인)")
+    @DisplayName("이미 소프트 삭제된 플랜 - 조회/수정/삭제/공유/초대/권한요청 전부 404 (C그룹 삭제 + B/C/D/collaboration_request A그룹 나머지 API 간 교차 확인)")
     void alreadyDeletedPlan_allEndpointsReturn404() throws Exception {
         Plan plan = createTestPlan(true, testUser);
+        User receiver = createOtherUser();
         plan.softDelete();
         planRepository.saveAndFlush(plan);
         entityManager.clear();
@@ -752,6 +762,19 @@ class PlanControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new UpdateShareRequest(false))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+
+        mockMvc.perform(post("/api/plan/{planId}/invite", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new InviteUserToPlanRequest(receiver.getNickname()))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+
+        String otherToken = jwtTokenProvider.createAccessToken(receiver.getUserId(), receiver.getRole().name());
+        mockMvc.perform(post("/api/plan/{planId}/request-access", plan.getPlanId())
+                        .header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("PLAN_001"));
 
@@ -934,6 +957,273 @@ class PlanControllerTest {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    // ---------- #37 inviteUserToPlan ----------
+
+    @Test
+    @DisplayName("사용자 초대 성공 - 201, DB에 INVITE/PENDING 요청 생성 확인")
+    void inviteUserToPlan_success() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User receiver = createOtherUser();
+        InviteUserToPlanRequest request = new InviteUserToPlanRequest(receiver.getNickname());
+
+        String responseBody = mockMvc.perform(post("/api/plan/{planId}/invite", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.collaborationRequestId").exists())
+                .andReturn().getResponse().getContentAsString();
+
+        Long requestId = objectMapper.readTree(responseBody).get("collaborationRequestId").asLong();
+        CollaborationRequest saved = collaborationRequestRepository.findById(requestId).orElseThrow();
+        assertThat(saved.getType()).isEqualTo(CollaborationRequestType.INVITE);
+        assertThat(saved.getStatus()).isEqualTo(CollaborationRequestStatus.PENDING);
+        assertThat(saved.getSender().getUserId()).isEqualTo(testUser.getUserId());
+        assertThat(saved.getReceiver().getUserId()).isEqualTo(receiver.getUserId());
+    }
+
+    @Test
+    @DisplayName("사용자 초대 실패 - 인증 토큰 없으면 401")
+    void inviteUserToPlan_fail_noAuth() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User receiver = createOtherUser();
+        InviteUserToPlanRequest request = new InviteUserToPlanRequest(receiver.getNickname());
+
+        mockMvc.perform(post("/api/plan/{planId}/invite", plan.getPlanId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("사용자 초대 실패 - 보낸 사람이 이 플랜의 멤버가 아니면 403")
+    void inviteUserToPlan_fail_senderNotMember() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User receiver = createOtherUser();
+        String otherToken = createOtherUserToken();
+        InviteUserToPlanRequest request = new InviteUserToPlanRequest(receiver.getNickname());
+
+        mockMvc.perform(post("/api/plan/{planId}/invite", plan.getPlanId())
+                        .header("Authorization", "Bearer " + otherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_002"));
+    }
+
+    @Test
+    @DisplayName("사용자 초대 실패 - 존재하지 않는 플랜이면 404")
+    void inviteUserToPlan_fail_planNotFound() throws Exception {
+        InviteUserToPlanRequest request = new InviteUserToPlanRequest("아무닉네임");
+
+        mockMvc.perform(post("/api/plan/{planId}/invite", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    @Test
+    @DisplayName("사용자 초대 실패 - 닉네임에 해당하는 사용자 없으면 404, USER_001")
+    void inviteUserToPlan_fail_receiverNotFound() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        InviteUserToPlanRequest request = new InviteUserToPlanRequest("존재하지않는닉네임");
+
+        mockMvc.perform(post("/api/plan/{planId}/invite", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_001"));
+    }
+
+    @Test
+    @DisplayName("사용자 초대 실패 - 받는 사람이 이미 이 플랜의 편집자면 409, COLLAB_002")
+    void inviteUserToPlan_fail_receiverAlreadyMember() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User editor = createOtherUser();
+        planMemberRepository.saveAndFlush(PlanMember.builder()
+                .plan(plan)
+                .user(editor)
+                .role(PlanMemberRole.EDITOR)
+                .build());
+        InviteUserToPlanRequest request = new InviteUserToPlanRequest(editor.getNickname());
+
+        mockMvc.perform(post("/api/plan/{planId}/invite", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("COLLAB_002"));
+    }
+
+    @Test
+    @DisplayName("사용자 초대 실패 - 자기 자신을 자기 닉네임으로 초대해도 409, COLLAB_002(별도 자기자신 가드 없이 '이미 멤버' 체크로 걸림, A_요청_생성.md 10-1절)")
+    void inviteUserToPlan_fail_selfInvite() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        InviteUserToPlanRequest request = new InviteUserToPlanRequest(testUser.getNickname());
+
+        mockMvc.perform(post("/api/plan/{planId}/invite", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("COLLAB_002"));
+    }
+
+    @Test
+    @DisplayName("사용자 초대 실패 - 동일한 INVITE 요청이 이미 대기 중이면 409, COLLAB_003")
+    void inviteUserToPlan_fail_duplicatePending() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User receiver = createOtherUser();
+        collaborationRequestRepository.saveAndFlush(CollaborationRequest.builder()
+                .type(CollaborationRequestType.INVITE)
+                .status(CollaborationRequestStatus.PENDING)
+                .sender(testUser)
+                .receiver(receiver)
+                .plan(plan)
+                .build());
+        InviteUserToPlanRequest request = new InviteUserToPlanRequest(receiver.getNickname());
+
+        mockMvc.perform(post("/api/plan/{planId}/invite", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("COLLAB_003"));
+    }
+
+    @Test
+    @DisplayName("사용자 초대 검증 실패 - receiverNickname이 비어있으면 400, COMMON_001")
+    void inviteUserToPlan_validationFailure_blankNickname() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        InviteUserToPlanRequest request = new InviteUserToPlanRequest(" ");
+
+        mockMvc.perform(post("/api/plan/{planId}/invite", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+    }
+
+    // ---------- #38 requestEditAccess ----------
+
+    @Test
+    @DisplayName("편집 권한 요청 성공 - 201, DB에 REQUEST/PENDING 요청 생성, receiver=플랜 오너")
+    void requestEditAccess_success() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        String requesterToken = createOtherUserToken();
+
+        String responseBody = mockMvc.perform(post("/api/plan/{planId}/request-access", plan.getPlanId())
+                        .header("Authorization", "Bearer " + requesterToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.collaborationRequestId").exists())
+                .andReturn().getResponse().getContentAsString();
+
+        Long requestId = objectMapper.readTree(responseBody).get("collaborationRequestId").asLong();
+        CollaborationRequest saved = collaborationRequestRepository.findById(requestId).orElseThrow();
+        assertThat(saved.getType()).isEqualTo(CollaborationRequestType.REQUEST);
+        assertThat(saved.getStatus()).isEqualTo(CollaborationRequestStatus.PENDING);
+        assertThat(saved.getReceiver().getUserId()).isEqualTo(testUser.getUserId());
+    }
+
+    @Test
+    @DisplayName("편집 권한 요청 실패 - 인증 토큰 없으면 401")
+    void requestEditAccess_fail_noAuth() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(post("/api/plan/{planId}/request-access", plan.getPlanId()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("편집 권한 요청 실패 - 존재하지 않는 플랜이면 404")
+    void requestEditAccess_fail_planNotFound() throws Exception {
+        mockMvc.perform(post("/api/plan/{planId}/request-access", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
+    @Test
+    @DisplayName("편집 권한 요청 실패 - 오너 자기 자신이 요청하면 409, COLLAB_002")
+    void requestEditAccess_fail_ownerSelfRequest() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+
+        mockMvc.perform(post("/api/plan/{planId}/request-access", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("COLLAB_002"));
+    }
+
+    @Test
+    @DisplayName("편집 권한 요청 실패 - 이미 편집자인 사람이 요청하면 409, COLLAB_002")
+    void requestEditAccess_fail_editorAlreadyMember() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User editor = createOtherUser();
+        planMemberRepository.saveAndFlush(PlanMember.builder()
+                .plan(plan)
+                .user(editor)
+                .role(PlanMemberRole.EDITOR)
+                .build());
+        String editorToken = jwtTokenProvider.createAccessToken(editor.getUserId(), editor.getRole().name());
+
+        mockMvc.perform(post("/api/plan/{planId}/request-access", plan.getPlanId())
+                        .header("Authorization", "Bearer " + editorToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("COLLAB_002"));
+    }
+
+    @Test
+    @DisplayName("편집 권한 요청 실패 - 동일한 REQUEST 요청이 이미 대기 중이면 409, COLLAB_003")
+    void requestEditAccess_fail_duplicatePending() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        User requester = createOtherUser();
+        collaborationRequestRepository.saveAndFlush(CollaborationRequest.builder()
+                .type(CollaborationRequestType.REQUEST)
+                .status(CollaborationRequestStatus.PENDING)
+                .sender(requester)
+                .receiver(testUser)
+                .plan(plan)
+                .build());
+        String requesterToken = jwtTokenProvider.createAccessToken(requester.getUserId(), requester.getRole().name());
+
+        mockMvc.perform(post("/api/plan/{planId}/request-access", plan.getPlanId())
+                        .header("Authorization", "Bearer " + requesterToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("COLLAB_003"));
+    }
+
+    // ---------- collaboration_request DB 제약 실측 (기능_구현_표준.md 16장 5번 bullet 3) ----------
+
+    @Test
+    @DisplayName("DB 제약 실측 - Service 검증(existsPendingRequest)을 우회해도 uk_collaboration_request_pending UNIQUE 인덱스가 중복 PENDING 삽입을 실제로 막아준다")
+    void collaborationRequest_dbConstraint_blocksDuplicatePendingBypassingServiceCheck() {
+        Plan plan = createTestPlan(true, testUser);
+        User receiver = createOtherUser();
+
+        collaborationRequestRepository.saveAndFlush(CollaborationRequest.builder()
+                .type(CollaborationRequestType.INVITE)
+                .status(CollaborationRequestStatus.PENDING)
+                .sender(testUser)
+                .receiver(receiver)
+                .plan(plan)
+                .build());
+
+        CollaborationRequest duplicate = CollaborationRequest.builder()
+                .type(CollaborationRequestType.INVITE)
+                .status(CollaborationRequestStatus.PENDING)
+                .sender(testUser)
+                .receiver(receiver)
+                .plan(plan)
+                .build();
+
+        assertThatThrownBy(() -> collaborationRequestRepository.saveAndFlush(duplicate))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     private Plan createTestPlan(boolean isShared, User owner) {

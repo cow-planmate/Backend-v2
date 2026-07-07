@@ -1,5 +1,9 @@
 package com.planmate.domain.plan.controller;
 
+import com.planmate.domain.collaboration.dto.InviteUserToPlanRequest;
+import com.planmate.domain.collaboration.dto.InviteUserToPlanResponse;
+import com.planmate.domain.collaboration.dto.RequestEditAccessResponse;
+import com.planmate.domain.collaboration.service.CollaborationRequestService;
 import com.planmate.domain.plan.dto.CreatePlanFrameRequest;
 import com.planmate.domain.plan.dto.CreatePlanFrameResponse;
 import com.planmate.domain.plan.dto.CreatePlanRequest;
@@ -35,6 +39,7 @@ import java.util.UUID;
 public class PlanController {
 
     private final PlanService planService;
+    private final CollaborationRequestService collaborationRequestService;
 
     @PostMapping
     public ResponseEntity<CreatePlanFrameResponse> createPlanFrame(@AuthenticationPrincipal UUID userId,
@@ -110,5 +115,21 @@ public class PlanController {
     @GetMapping("/{planId}/editors")
     public ResponseEntity<GetEditorsResponse> getEditors(@PathVariable UUID planId) {
         return ResponseEntity.ok(planService.getEditors(planId));
+    }
+
+    @PostMapping("/{planId}/invite")
+    public ResponseEntity<InviteUserToPlanResponse> inviteUserToPlan(
+            @AuthenticationPrincipal UUID userId, @PathVariable UUID planId,
+            @Valid @RequestBody InviteUserToPlanRequest request) {
+        InviteUserToPlanResponse response =
+                collaborationRequestService.inviteUserToPlan(planId, userId, request.receiverNickname());
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("/{planId}/request-access")
+    public ResponseEntity<RequestEditAccessResponse> requestEditAccess(
+            @AuthenticationPrincipal UUID userId, @PathVariable UUID planId) {
+        RequestEditAccessResponse response = collaborationRequestService.requestEditAccess(planId, userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }
