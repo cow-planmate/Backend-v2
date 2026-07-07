@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(unzip -o -q \"/c/Users/tedtid/.gradle/caches/modules-2/files-2.1/com.google.firebase/firebase-admin/9.3.0/cb04b93e881b223f831712594d7c4e6e25b2bce4/firebase-admin-9.3.0.jar\" \"com/google/firebase/messaging/FirebaseMessaging.class\" -d .)",
+      "Bash(javap -p com/google/firebase/messaging/FirebaseMessaging.class)",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s http://localhost:8080/actuator/health --max-time 3)",
+      "Bash(powershell -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''java.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*PlanMateApplication*'\\\\'' -or $_.CommandLine -like '\\\\''*bootRun*'\\\\'' } | Select-Object ProcessId')"
+    ]
+  }
+}

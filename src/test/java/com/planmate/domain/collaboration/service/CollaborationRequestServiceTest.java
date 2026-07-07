@@ -15,6 +15,7 @@ import com.planmate.domain.collaboration.entity.CollaborationRequest;
 import com.planmate.domain.collaboration.enums.CollaborationRequestStatus;
 import com.planmate.domain.collaboration.enums.CollaborationRequestType;
 import com.planmate.domain.collaboration.repository.CollaborationRequestRepository;
+import com.planmate.domain.notification.CollaborationNotificationEvent;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
@@ -29,8 +30,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -57,6 +60,8 @@ class CollaborationRequestServiceTest {
     private PlanMemberRepository planMemberRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private CollaborationRequestService collaborationRequestService;
@@ -74,7 +79,9 @@ class CollaborationRequestServiceTest {
     }
 
     private Plan planStub(User owner) {
-        return Plan.builder().planId(PLAN_ID).user(owner).build();
+        // planName은 이번 변경 전엔 아무도 안 읽었지만, 이벤트 발행 코드(Map.of(...))가 null이면
+        // Map.of()가 NullPointerException을 던지므로 이제부터 채워야 함(기존 로직 변경 아님, 새로 생긴 요구사항).
+        return Plan.builder().planId(PLAN_ID).planName("plan").user(owner).build();
     }
 
     private CollaborationRequest savedRequestStub() {
@@ -119,6 +126,14 @@ class CollaborationRequestServiceTest {
         assertThat(built.getStatus()).isEqualTo(CollaborationRequestStatus.PENDING);
         assertThat(built.getSender().getUserId()).isEqualTo(SENDER_ID);
         assertThat(built.getReceiver().getUserId()).isEqualTo(RECEIVER_ID);
+
+        verify(eventPublisher).publishEvent(new CollaborationNotificationEvent(
+                RECEIVER_ID,
+                "invitation",
+                Map.of("type", "INVITE", "senderNickname", "sender", "planName", "plan", "collaborationRequestId", 1L),
+                "일정 초대",
+                "sender님이 '" + "plan" + "' 일정에 초대했습니다."
+        ));
     }
 
     @Test
@@ -207,6 +222,14 @@ class CollaborationRequestServiceTest {
         assertThat(built.getStatus()).isEqualTo(CollaborationRequestStatus.PENDING);
         assertThat(built.getSender().getUserId()).isEqualTo(SENDER_ID);
         assertThat(built.getReceiver().getUserId()).isEqualTo(OWNER_ID);
+
+        verify(eventPublisher).publishEvent(new CollaborationNotificationEvent(
+                OWNER_ID,
+                "invitation",
+                Map.of("type", "REQUEST", "senderNickname", "sender", "planName", "plan", "collaborationRequestId", 1L),
+                "편집 권한 요청",
+                "sender님이 '" + "plan" + "' 일정의 편집 권한을 요청했습니다."
+        ));
     }
 
     @Test
@@ -310,6 +333,15 @@ class CollaborationRequestServiceTest {
         assertThat(captor.getValue().getUser().getUserId()).isEqualTo(RECEIVER_ID);
         assertThat(captor.getValue().getRole()).isEqualTo(PlanMemberRole.EDITOR);
         assertThat(captor.getValue().getInvitedBy().getUserId()).isEqualTo(OWNER_ID);
+
+        // 알림 수신자는 request.getSender()(=owner, 응답을 기다리던 원래 요청자) — receiver가 아님
+        verify(eventPublisher).publishEvent(new CollaborationNotificationEvent(
+                OWNER_ID,
+                "requestResult",
+                Map.of("result", "ACCEPTED", "receiverNickname", "receiver", "planName", "plan"),
+                "요청 수락",
+                "receiver님이 '" + "plan" + "' 관련 요청을 수락했습니다."
+        ));
     }
 
     @Test
@@ -331,6 +363,15 @@ class CollaborationRequestServiceTest {
         verify(planMemberRepository).save(captor.capture());
         assertThat(captor.getValue().getUser().getUserId()).isEqualTo(SENDER_ID);
         assertThat(captor.getValue().getInvitedBy().getUserId()).isEqualTo(OWNER_ID);
+
+        // REQUEST 타입은 sender/receiver가 INVITE와 반대 방향(requestStub(..., sender(), owner(), ...)) — 알림은 request.getSender()=SENDER_ID
+        verify(eventPublisher).publishEvent(new CollaborationNotificationEvent(
+                SENDER_ID,
+                "requestResult",
+                Map.of("result", "ACCEPTED", "receiverNickname", "owner", "planName", "plan"),
+                "요청 수락",
+                "owner님이 '" + "plan" + "' 관련 요청을 수락했습니다."
+        ));
     }
 
     @Test
@@ -348,6 +389,9 @@ class CollaborationRequestServiceTest {
 
         assertThat(request.getStatus()).isEqualTo(CollaborationRequestStatus.ACCEPTED);
         verify(planMemberRepository, never()).save(any());
+
+        // PlanMember 재삽입은 스킵돼도 알림은 무조건 발행(원본 동일 동작, 11절 근거)
+        verify(eventPublisher).publishEvent(any(CollaborationNotificationEvent.class));
     }
 
     @Test
@@ -416,6 +460,14 @@ class CollaborationRequestServiceTest {
         assertThat(response.collaborationRequestId()).isEqualTo(1L);
         assertThat(request.getStatus()).isEqualTo(CollaborationRequestStatus.REJECTED);
         verify(planMemberRepository, never()).save(any());
+
+        verify(eventPublisher).publishEvent(new CollaborationNotificationEvent(
+                OWNER_ID,
+                "requestResult",
+                Map.of("result", "REJECTED", "receiverNickname", "receiver", "planName", "plan"),
+                "요청 거절",
+                "receiver님이 '" + "plan" + "' 관련 요청을 거절했습니다."
+        ));
     }
 
     @Test
