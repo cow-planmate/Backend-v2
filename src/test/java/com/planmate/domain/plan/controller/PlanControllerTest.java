@@ -716,6 +716,51 @@ class PlanControllerTest {
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
     }
 
+    // ---------- 도메인 전체 점검(기능_구현_표준.md 17장) — C/D그룹 교차 케이스 ----------
+
+    @Test
+    @DisplayName("이미 소프트 삭제된 플랜 - 조회/수정/삭제/공유 전부 404 (C그룹 삭제 + B/C/D그룹 나머지 API 간 교차 확인)")
+    void alreadyDeletedPlan_allEndpointsReturn404() throws Exception {
+        Plan plan = createTestPlan(true, testUser);
+        plan.softDelete();
+        planRepository.saveAndFlush(plan);
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/plan/{planId}", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+
+        mockMvc.perform(get("/api/plan/{planId}/complete", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+
+        mockMvc.perform(get("/api/plan/{planId}/share", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+
+        mockMvc.perform(patch("/api/plan/{planId}/name", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new EditPlanNameRequest("새 이름"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+
+        mockMvc.perform(patch("/api/plan/{planId}/share", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new UpdateShareRequest(false))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+
+        mockMvc.perform(delete("/api/plan/{planId}", plan.getPlanId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PLAN_001"));
+    }
+
     private Plan createTestPlan(boolean isShared, User owner) {
         Plan plan = planRepository.saveAndFlush(Plan.builder()
                 .planName("테스트 플랜")
