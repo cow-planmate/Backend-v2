@@ -47,6 +47,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (bearer != null && bearer.startsWith("Bearer ")) {
             return bearer.substring(7);
         }
+        // 브라우저 네이티브 EventSource는 커스텀 헤더를 못 붙이므로 SSE 엔드포인트에 한해 쿼리 파라미터로 토큰 허용(원본 동일 로직)
+        if (request.getRequestURI().startsWith("/api/sse/")) {
+            return request.getParameter("token");
+        }
         return null;
     }
 }
