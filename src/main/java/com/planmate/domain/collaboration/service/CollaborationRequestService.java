@@ -16,6 +16,7 @@ import com.planmate.domain.collaboration.entity.CollaborationRequest;
 import com.planmate.domain.collaboration.enums.CollaborationRequestStatus;
 import com.planmate.domain.collaboration.enums.CollaborationRequestType;
 import com.planmate.domain.collaboration.repository.CollaborationRequestRepository;
+import com.planmate.domain.notification.CollaborationNotificationEvent;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
@@ -24,11 +25,13 @@ import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -39,6 +42,7 @@ public class CollaborationRequestService {
     private final PlanRepository planRepository;
     private final PlanMemberRepository planMemberRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @PreAuthorize("@planAccessValidator.validateMember(#planId, authentication.principal)")
     @Transactional
@@ -67,6 +71,19 @@ public class CollaborationRequestService {
                 .plan(plan)
                 .build());
 
+        eventPublisher.publishEvent(new CollaborationNotificationEvent(
+                receiver.getUserId(),
+                "invitation",
+                Map.of(
+                        "type", "INVITE",
+                        "senderNickname", sender.getNickname(),
+                        "planName", plan.getPlanName(),
+                        "collaborationRequestId", saved.getCollaborationRequestId()
+                ),
+                "일정 초대",
+                sender.getNickname() + "님이 '" + plan.getPlanName() + "' 일정에 초대했습니다."
+        ));
+
         return new InviteUserToPlanResponse(saved.getCollaborationRequestId());
     }
 
@@ -94,6 +111,19 @@ public class CollaborationRequestService {
                 .receiver(owner)
                 .plan(plan)
                 .build());
+
+        eventPublisher.publishEvent(new CollaborationNotificationEvent(
+                owner.getUserId(),
+                "invitation",
+                Map.of(
+                        "type", "REQUEST",
+                        "senderNickname", sender.getNickname(),
+                        "planName", plan.getPlanName(),
+                        "collaborationRequestId", saved.getCollaborationRequestId()
+                ),
+                "편집 권한 요청",
+                sender.getNickname() + "님이 '" + plan.getPlanName() + "' 일정의 편집 권한을 요청했습니다."
+        ));
 
         return new RequestEditAccessResponse(saved.getCollaborationRequestId());
     }
@@ -138,6 +168,18 @@ public class CollaborationRequestService {
 
         request.accept();
 
+        eventPublisher.publishEvent(new CollaborationNotificationEvent(
+                request.getSender().getUserId(),
+                "requestResult",
+                Map.of(
+                        "result", "ACCEPTED",
+                        "receiverNickname", request.getReceiver().getNickname(),
+                        "planName", plan.getPlanName()
+                ),
+                "요청 수락",
+                request.getReceiver().getNickname() + "님이 '" + plan.getPlanName() + "' 관련 요청을 수락했습니다."
+        ));
+
         return new AcceptRequestResponse(plan.getPlanId());
     }
 
@@ -151,6 +193,18 @@ public class CollaborationRequestService {
         }
 
         request.reject();
+
+        eventPublisher.publishEvent(new CollaborationNotificationEvent(
+                request.getSender().getUserId(),
+                "requestResult",
+                Map.of(
+                        "result", "REJECTED",
+                        "receiverNickname", request.getReceiver().getNickname(),
+                        "planName", request.getPlan().getPlanName()
+                ),
+                "요청 거절",
+                request.getReceiver().getNickname() + "님이 '" + request.getPlan().getPlanName() + "' 관련 요청을 거절했습니다."
+        ));
 
         return new RejectRequestResponse(request.getCollaborationRequestId());
     }
