@@ -19,6 +19,7 @@ public final class SecurityWhitelist {
             "/api/oauth/**",
             "/api/plan/*/complete",
             "/api/destination",
+            "/api/beta/feedback",
             "/actuator/health"
     );
 
