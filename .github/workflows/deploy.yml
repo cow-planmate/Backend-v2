@@ -8,9 +8,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   IMAGE: docker.io/cycle123/planmate-backend-v2
-
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
