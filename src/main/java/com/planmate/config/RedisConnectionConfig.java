@@ -10,6 +10,7 @@ import org.springframework.data.redis.connection.RedisNode;
 import org.springframework.data.redis.connection.RedisPassword;
 import org.springframework.data.redis.connection.RedisSentinelConfiguration;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
@@ -18,9 +19,13 @@ import org.springframework.util.StringUtils;
 
 import com.planmate.common.sse.SseRedisSubscriber;
 
+import io.lettuce.core.ReadFrom;
+
 /**
  * Pub/Sub 전용 Redis 커넥션(SSE 알림)을 메인 커넥션 풀과 분리한다.
- * Sentinel 프로퍼티가 채워지면 코드 변경 없이 Sentinel 경로로 전환된다(현재는 비활성 — 8절 TODO).
+ * Sentinel 프로퍼티가 채워지면 코드 변경 없이 Sentinel 기반 HA 경로로 전환된다.
+ * Sentinel 모드에서 메인(읽기/쓰기) 팩토리는 읽기를 레플리카로 분산하고,
+ * Pub/Sub 팩토리는 마스터에만 연결한다(발행은 반드시 마스터로).
  */
 @Configuration
 public class RedisConnectionConfig {
@@ -80,21 +85,48 @@ public class RedisConnectionConfig {
     @Bean(name = "redisConnectionFactory")
     @Primary
     public RedisConnectionFactory redisConnectionFactory() {
-        return buildConnectionFactory();
+        return buildReadWriteConnectionFactory();
     }
 
     @Bean(name = "pubSubRedisConnectionFactory")
     public RedisConnectionFactory pubSubRedisConnectionFactory() {
-        return buildConnectionFactory();
+        return buildPubSubConnectionFactory();
     }
 
-    /** 요청 처리용 메인 커넥션과 Pub/Sub 커넥션은 블로킹 구독이 메인 풀을 잠식하지 않도록 인스턴스를 분리한다. */
-    private RedisConnectionFactory buildConnectionFactory() {
+    /**
+     * 요청 처리용 메인(읽기/쓰기) 커넥션 팩토리.
+     * Sentinel 모드에서는 REPLICA_PREFERRED로 읽기를 레플리카에 분산해
+     * 마스터 부하를 덜고 레플리카를 낭비하지 않는다(레플리카가 없으면 마스터로 폴백).
+     * Pub/Sub 커넥션과는 블로킹 구독이 메인 풀을 잠식하지 않도록 인스턴스를 분리한다.
+     */
+    private RedisConnectionFactory buildReadWriteConnectionFactory() {
+        if (sentinelEnabled()) {
+            LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
+                    .readFrom(ReadFrom.REPLICA_PREFERRED)
+                    .build();
+            LettuceConnectionFactory factory = new LettuceConnectionFactory(sentinelConfiguration(), clientConfig);
+            factory.afterPropertiesSet();
+            return factory;
+        }
+        return buildStandaloneConnectionFactory();
+    }
+
+    /**
+     * Pub/Sub 전용 커넥션 팩토리(SSE 알림).
+     * Sentinel 모드에서도 마스터에만 연결한다 — 발행(PUBLISH)은 반드시 마스터로 가야 하므로
+     * 읽기 분산(readFrom)을 적용하지 않는다.
+     */
+    private RedisConnectionFactory buildPubSubConnectionFactory() {
         if (sentinelEnabled()) {
             LettuceConnectionFactory factory = new LettuceConnectionFactory(sentinelConfiguration());
             factory.afterPropertiesSet();
             return factory;
         }
+        return buildStandaloneConnectionFactory();
+    }
+
+    /** Sentinel 프로퍼티가 없을 때의 단일 노드 폴백(두 팩토리 공통). */
+    private RedisConnectionFactory buildStandaloneConnectionFactory() {
         RedisStandaloneConfiguration standalone = new RedisStandaloneConfiguration(host, port);
         if (StringUtils.hasText(password)) {
             standalone.setPassword(RedisPassword.of(password));

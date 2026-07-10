@@ -52,6 +52,9 @@ spring:
         master: ${SPRING_DATA_REDIS_SENTINEL_MASTER:}
         nodes: ${SPRING_DATA_REDIS_SENTINEL_NODES:}
 
+internal:
+  api-token: ${INTERNAL_API_TOKEN:local-internal-token}
+
 firebase:
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
   service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
