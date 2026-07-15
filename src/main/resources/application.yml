@@ -55,6 +55,10 @@ spring:
 internal:
   api-token: ${INTERNAL_API_TOKEN:local-internal-token}
 
+api:
+  odsay:
+    key: ${ODSAY_API_KEY:}
+
 firebase:
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
   service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
