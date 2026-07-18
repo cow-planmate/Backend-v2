@@ -3,6 +3,8 @@ package com.planmate.domain.timetable.entity;
 import com.planmate.common.entity.BaseTimeEntity;
 import com.planmate.domain.timetable.enums.BlockCategory;
 import com.planmate.domain.timetable.enums.converter.BlockCategoryConverter;
+import com.sharedsync.shared.annotation.CacheEntity;
+import com.sharedsync.shared.annotation.ParentId;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -28,6 +30,7 @@ import java.time.LocalTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder
+@CacheEntity
 public class TimeTablePlaceBlock extends BaseTimeEntity {
 
     @Id
@@ -37,6 +40,7 @@ public class TimeTablePlaceBlock extends BaseTimeEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "time_table_id", nullable = false)
+    @ParentId(TimeTable.class)
     private TimeTable timeTable;
 
     @Column(name = "place_id", length = 100)

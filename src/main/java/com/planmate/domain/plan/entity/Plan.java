@@ -7,6 +7,8 @@ import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.enums.converter.TransportationTypeConverter;
 import com.planmate.domain.user.entity.User;
+import com.sharedsync.shared.annotation.CacheEntity;
+import com.sharedsync.shared.presence.annotation.PresenceRoot;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -32,6 +34,8 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder
+@CacheEntity
+@PresenceRoot(channel = "plan-presence", idField = "planId")
 public class Plan extends BaseSoftDeleteEntity {
 
     @Id

@@ -71,6 +71,21 @@ jwt:
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174}
 
+sharedsync:
+  websocket:
+    endpoint: /ws
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174}
+    redis-sync:
+      enabled: true
+  auth:
+    enabled: true
+  presence:
+    session-timeout: 3600
+    cleanup-interval: 30
+    broadcast-delay: 1000
+  cache:
+    type: redis
+
 logging:
   level:
     org.springframework: WARN

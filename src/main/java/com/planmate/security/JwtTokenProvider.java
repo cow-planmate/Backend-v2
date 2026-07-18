@@ -3,6 +3,7 @@ package com.planmate.security;
 import com.planmate.common.exception.domain.InvalidTokenException;
 import com.planmate.common.exception.domain.TokenExpiredException;
 import com.planmate.domain.auth.enums.EmailVerificationPurpose;
+import com.sharedsync.shared.auth.AuthenticationTokenResolver;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -20,7 +21,7 @@ import java.util.Date;
 import java.util.UUID;
 
 @Component
-public class JwtTokenProvider {
+public class JwtTokenProvider implements AuthenticationTokenResolver {
 
     @Value("${jwt.secret}")
     private String secret;
@@ -91,6 +92,16 @@ public class JwtTokenProvider {
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
+    }
+
+    @Override
+    public boolean validate(String token) {
+        return validateToken(token);
+    }
+
+    @Override
+    public String extractPrincipalId(String token) {
+        return extractUserId(token).toString();
     }
 
     private String createToken(UUID userId, String role, String type, long expirySeconds) {

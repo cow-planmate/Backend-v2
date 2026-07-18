@@ -6,6 +6,7 @@ import com.planmate.domain.user.enums.Gender;
 import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.enums.UserRole;
 import com.planmate.domain.user.enums.converter.GenderConverter;
+import com.sharedsync.shared.presence.annotation.PresenceUser;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -31,6 +32,7 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder
+@PresenceUser(fields = {"nickname", "email"})
 public class User extends BaseSoftDeleteEntity {
 
     @Id

@@ -26,6 +26,12 @@ import io.lettuce.core.ReadFrom;
  * Sentinel 프로퍼티가 채워지면 코드 변경 없이 Sentinel 기반 HA 경로로 전환된다.
  * Sentinel 모드에서 메인(읽기/쓰기) 팩토리는 읽기를 레플리카로 분산하고,
  * Pub/Sub 팩토리는 마스터에만 연결한다(발행은 반드시 마스터로).
+ *
+ * SharedSync 자체 RedisConfig(sharedSyncRedisConnectionFactory/pubSubConnectionFactory)는
+ * Sentinel 디스커버리를 지원하지 않는다 — 두 빈 다 @ConditionalOnMissingBean(name=...)로 걸려 있어서
+ * 이 클래스가 같은 이름으로 먼저 등록해두면 SharedSync 기본 구현이 자동으로 물러난다. 별도 클래스로
+ * 안 뺀 이유: v1의 PlanMateRedisConfig가 이미 검증한 패턴 — Sentinel 파싱 로직(sentinelConfiguration())을
+ * 하나만 두고 메인/SharedSync 커넥션 팩토리 전부가 재사용한다.
  */
 @Configuration
 public class RedisConnectionConfig {
@@ -90,6 +96,24 @@ public class RedisConnectionConfig {
 
     @Bean(name = "pubSubRedisConnectionFactory")
     public RedisConnectionFactory pubSubRedisConnectionFactory() {
+        return buildPubSubConnectionFactory();
+    }
+
+    /**
+     * SharedSync 프레임워크가 @Qualifier("sharedSyncRedisConnectionFactory")로 참조하는 커넥션 팩토리.
+     * 프레임워크의 @ConditionalOnMissingBean 기본(비-Sentinel) 팩토리 대신 이 Sentinel-aware 팩토리가 쓰인다.
+     */
+    @Bean(name = "sharedSyncRedisConnectionFactory")
+    public RedisConnectionFactory sharedSyncRedisConnectionFactory() {
+        return buildReadWriteConnectionFactory();
+    }
+
+    /**
+     * SharedSync 프레임워크가 @Qualifier("pubSubConnectionFactory")로 참조하는 Pub/Sub 커넥션 팩토리.
+     * WebSocket 다중 서버 동기화(RedisSyncService)가 이 팩토리로 발행하므로 Sentinel-aware여야 한다.
+     */
+    @Bean(name = "pubSubConnectionFactory")
+    public RedisConnectionFactory pubSubConnectionFactory() {
         return buildPubSubConnectionFactory();
     }
 
