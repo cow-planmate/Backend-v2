@@ -2,6 +2,8 @@ package com.planmate.domain.timetable.entity;
 
 import com.planmate.common.entity.BaseTimeEntity;
 import com.planmate.domain.plan.entity.Plan;
+import com.sharedsync.shared.annotation.CacheEntity;
+import com.sharedsync.shared.annotation.ParentId;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -26,6 +28,7 @@ import java.time.LocalTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder
+@CacheEntity
 public class TimeTable extends BaseTimeEntity {
 
     @Id
@@ -44,5 +47,6 @@ public class TimeTable extends BaseTimeEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "plan_id", nullable = false)
+    @ParentId(Plan.class)
     private Plan plan;
 }

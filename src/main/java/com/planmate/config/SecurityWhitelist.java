@@ -22,7 +22,10 @@ public final class SecurityWhitelist {
             "/api/beta/feedback",
             "/actuator/health",
             // 내부 서비스 전용 API — 인증은 InternalTokenFilter가 별도로 처리한다
-            "/api/internal/**"
+            "/api/internal/**",
+            // SharedSync WebSocket 핸드셰이크(SockJS) — 실제 인증은 SharedSync 자체
+            // JwtHandshakeInterceptor/WsAuthChannelInterceptor가 별도로 처리한다
+            "/ws/**"
     );
 
     private SecurityWhitelist() {

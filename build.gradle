@@ -6,6 +6,7 @@ plugins {
 
 group = 'com.planmate'
 version = '0.0.1-SNAPSHOT'
+def sharedSyncVersion = 'c0e567f718'
 
 java {
     toolchain {
@@ -15,10 +16,20 @@ java {
 
 repositories {
     mavenCentral()
+    mavenLocal()
     maven { url 'https://jitpack.io' }
 }
 
 dependencies {
+    // SharedSync Framework (WebSocket 실시간 협업편집)
+    if (project.hasProperty('useLocalSharedSync') && project.useLocalSharedSync == 'true') {
+        implementation 'com.sharedsync:sharedsync-starter:1.1.26'
+        annotationProcessor 'com.sharedsync:sharedsync-autoconfigure:1.1.26'
+    } else {
+        implementation "com.github.Shared-Sync.SharedSync:sharedsync-starter:$sharedSyncVersion"
+        annotationProcessor "com.github.Shared-Sync.SharedSync:sharedsync-autoconfigure:$sharedSyncVersion"
+    }
+
     // Web
     implementation 'org.springframework.boot:spring-boot-starter-web'
 
