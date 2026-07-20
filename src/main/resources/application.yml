@@ -58,6 +58,9 @@ internal:
 api:
   odsay:
     key: ${ODSAY_API_KEY:}
+  tour:
+    key: ${TOUR_API_KEY:}
+    base-url: ${TOUR_API_BASE_URL:https://apis.data.go.kr/B551011/KorService2}
 
 firebase:
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}

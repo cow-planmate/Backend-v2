@@ -312,6 +312,3 @@ CREATE TABLE preferred_theme_lcls_systm_code (
 
 CREATE INDEX idx_preferred_theme_lcls_systm_code_theme_id
     ON preferred_theme_lcls_systm_code (preferred_theme_id);
-
-CREATE INDEX idx_destination_region_code_destination_id
-    ON destination_region_code (destination_id);
