@@ -266,3 +266,25 @@ CREATE TABLE beta_feedback (
 
     CONSTRAINT pk_beta_feedback PRIMARY KEY (feedback_id)
 );
+
+-- ------------------------------------------------------------
+-- 11. destination_region_code  (destination ↔ TourAPI 법정동코드 매핑)
+-- ------------------------------------------------------------
+CREATE TABLE destination_region_code (
+    destination_region_code_id INT         GENERATED ALWAYS AS IDENTITY,
+    destination_id              INT         NOT NULL,
+    ldong_regn_cd                VARCHAR(10) NOT NULL,
+    ldong_signgu_cd               VARCHAR(10),
+
+    CONSTRAINT pk_destination_region_code
+        PRIMARY KEY (destination_region_code_id),
+    CONSTRAINT uk_destination_region_code_dest_regn_signgu
+        UNIQUE (destination_id, ldong_regn_cd, ldong_signgu_cd),
+    CONSTRAINT fk_destination_region_code_destination
+        FOREIGN KEY (destination_id)
+            REFERENCES destination (destination_id)
+            ON DELETE CASCADE
+);
+
+CREATE INDEX idx_destination_region_code_destination_id
+    ON destination_region_code (destination_id);
