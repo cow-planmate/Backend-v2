@@ -288,3 +288,30 @@ CREATE TABLE destination_region_code (
 
 CREATE INDEX idx_destination_region_code_destination_id
     ON destination_region_code (destination_id);
+
+-- ------------------------------------------------------------
+-- 12. preferred_theme_lcls_systm_code  (preferred_theme ↔ TourAPI lclsSystm 코드 매핑)
+-- ------------------------------------------------------------
+CREATE TABLE preferred_theme_lcls_systm_code (
+    preferred_theme_lcls_systm_code_id INT      GENERATED ALWAYS AS IDENTITY,
+    preferred_theme_id                 INT      NOT NULL,
+    lcls_systm_level                   SMALLINT NOT NULL,   -- 1=lclsSystm1, 2=lclsSystm2, 3=lclsSystm3 중 어느 파라미터에 넣을지
+    lcls_systm_cd                      VARCHAR(10) NOT NULL,
+
+    CONSTRAINT pk_preferred_theme_lcls_systm_code
+        PRIMARY KEY (preferred_theme_lcls_systm_code_id),
+    CONSTRAINT uk_preferred_theme_lcls_systm_code
+        UNIQUE (preferred_theme_id, lcls_systm_level, lcls_systm_cd),
+    CONSTRAINT chk_preferred_theme_lcls_systm_level
+        CHECK (lcls_systm_level IN (1, 2, 3)),
+    CONSTRAINT fk_preferred_theme_lcls_systm_code_theme
+        FOREIGN KEY (preferred_theme_id)
+            REFERENCES preferred_theme (preferred_theme_id)
+            ON DELETE CASCADE
+);
+
+CREATE INDEX idx_preferred_theme_lcls_systm_code_theme_id
+    ON preferred_theme_lcls_systm_code (preferred_theme_id);
+
+CREATE INDEX idx_destination_region_code_destination_id
+    ON destination_region_code (destination_id);
