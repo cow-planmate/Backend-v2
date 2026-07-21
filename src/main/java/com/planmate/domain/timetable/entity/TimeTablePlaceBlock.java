@@ -49,11 +49,17 @@ public class TimeTablePlaceBlock extends BaseTimeEntity {
     @Column(name = "place_name", nullable = false, length = 255)
     private String placeName;
 
-    @Column(name = "place_rating", precision = 3, scale = 1)
-    private BigDecimal placeRating;
+    @Column(name = "place_content_type_id", length = 10)
+    private String placeContentTypeId;
 
     @Column(name = "place_address", columnDefinition = "TEXT")
     private String placeAddress;
+
+    @Column(name = "place_thumbnail_url", columnDefinition = "TEXT")
+    private String placeThumbnailUrl;
+
+    @Column(name = "place_copyright_div_cd", length = 10)
+    private String placeCopyrightDivCd;
 
     @Column(precision = 10, scale = 8)
     private BigDecimal latitude;

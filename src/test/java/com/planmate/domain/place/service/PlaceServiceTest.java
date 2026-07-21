@@ -95,7 +95,7 @@ class PlaceServiceTest {
         given(tourApiClient.getAreaBasedList(eq("11"), isNull(), eq("32"), isNull(), isNull(), eq(20), eq(1)))
                 .willReturn(new AreaBasedListResult(List.of(item("1", "32"), item("2", "32")), 50));
 
-        PlaceSearchResponse response = placeService.searchPlaces(request(PlaceCategory.LODGING, 1, 20), null);
+        PlaceSearchResponse response = placeService.searchPlaces(request(PlaceCategory.ACCOMMODATION, 1, 20), null);
 
         assertThat(response.places()).hasSize(2);
         assertThat(response.totalCount()).isEqualTo(50);
@@ -162,7 +162,7 @@ class PlaceServiceTest {
     }
 
     @Test
-    @DisplayName("searchPlaces - TOUR 카테고리는 관광지(12)/문화시설(14)을 7:3 비율로 나눠 호출")
+    @DisplayName("searchPlaces - ATTRACTION 카테고리는 관광지(12)/문화시설(14)을 7:3 비율로 나눠 호출")
     void searchPlaces_tourCategorySplits7to3() throws Exception {
         given(destinationRegionCodeCache.get(DESTINATION_ID))
                 .willReturn(List.of(regionCode("11", null)));
@@ -171,7 +171,7 @@ class PlaceServiceTest {
         given(tourApiClient.getAreaBasedList(eq("11"), isNull(), eq("14"), isNull(), isNull(), eq(6), eq(1)))
                 .willReturn(new AreaBasedListResult(List.of(item("3", "14")), 10));
 
-        PlaceSearchResponse response = placeService.searchPlaces(request(PlaceCategory.TOUR, 1, 20), null);
+        PlaceSearchResponse response = placeService.searchPlaces(request(PlaceCategory.ATTRACTION, 1, 20), null);
 
         assertThat(response.places()).hasSize(3);
         verify(tourApiClient).getAreaBasedList(eq("11"), isNull(), eq("12"), isNull(), isNull(), eq(14), eq(1));
@@ -183,7 +183,7 @@ class PlaceServiceTest {
     void searchPlaces_destinationNotFound() {
         given(destinationRegionCodeCache.get(DESTINATION_ID)).willReturn(List.of());
 
-        assertThatThrownBy(() -> placeService.searchPlaces(request(PlaceCategory.TOUR, 1, 20), null))
+        assertThatThrownBy(() -> placeService.searchPlaces(request(PlaceCategory.ATTRACTION, 1, 20), null))
                 .isInstanceOf(DestinationNotFoundException.class);
     }
 
@@ -195,7 +195,7 @@ class PlaceServiceTest {
         given(tourApiClient.getAreaBasedList(any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .willThrow(new TourApiCallFailedException());
 
-        assertThatThrownBy(() -> placeService.searchPlaces(request(PlaceCategory.LODGING, 1, 20), null))
+        assertThatThrownBy(() -> placeService.searchPlaces(request(PlaceCategory.ACCOMMODATION, 1, 20), null))
                 .isInstanceOf(TourApiCallFailedException.class);
     }
 
@@ -209,7 +209,7 @@ class PlaceServiceTest {
         given(tourApiClient.getAreaBasedList(eq("11"), eq("112"), eq("32"), isNull(), isNull(), anyInt(), eq(1)))
                 .willReturn(new AreaBasedListResult(List.of(item("100", "32"), item("102", "32")), 2));
 
-        PlaceSearchResponse response = placeService.searchPlaces(request(PlaceCategory.LODGING, 1, 20), null);
+        PlaceSearchResponse response = placeService.searchPlaces(request(PlaceCategory.ACCOMMODATION, 1, 20), null);
 
         assertThat(response.places())
                 .extracting(place -> place.contentId())

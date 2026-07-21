@@ -183,20 +183,22 @@ CREATE TABLE time_table (
 -- 8. time_table_place_block
 -- ------------------------------------------------------------
 CREATE TABLE time_table_place_block (
-    block_id         BIGINT       GENERATED ALWAYS AS IDENTITY,
-    time_table_id    BIGINT       NOT NULL,
-    place_id         VARCHAR(100),
-    place_name       VARCHAR(255) NOT NULL,
-    place_rating     NUMERIC(3, 1),
-    place_address    TEXT,
-    latitude         NUMERIC(10, 8),
-    longitude        NUMERIC(11, 8),
-    block_start_time TIME         NOT NULL,
-    block_end_time   TIME         NOT NULL,
-    block_category   VARCHAR(10)  NOT NULL,
-    memo             TEXT,
-    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    block_id                BIGINT       GENERATED ALWAYS AS IDENTITY,
+    time_table_id           BIGINT       NOT NULL,
+    place_id                VARCHAR(100),
+    place_name              VARCHAR(255) NOT NULL,
+    place_content_type_id   VARCHAR(10),
+    place_address           TEXT,
+    place_thumbnail_url     TEXT,
+    place_copyright_div_cd  VARCHAR(10),
+    latitude                NUMERIC(10, 8),
+    longitude               NUMERIC(11, 8),
+    block_start_time        TIME         NOT NULL,
+    block_end_time          TIME         NOT NULL,
+    block_category          VARCHAR(10)  NOT NULL,
+    memo                    TEXT,
+    created_at              TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT pk_time_table_place_block
         PRIMARY KEY (block_id),
@@ -204,8 +206,6 @@ CREATE TABLE time_table_place_block (
         UNIQUE (time_table_id, block_start_time),
     CONSTRAINT chk_block_category
         CHECK (block_category IN ('관광지', '숙소', '식당', '자유', '검색')),
-    CONSTRAINT chk_block_place_rating
-        CHECK (place_rating IS NULL OR place_rating BETWEEN 0.0 AND 5.0),
     CONSTRAINT fk_block_time_table
         FOREIGN KEY (time_table_id)
             REFERENCES time_table (time_table_id)
