@@ -57,37 +57,40 @@ public class PlaceService {
 
         List<PreferredThemeLclsSystmCode> matchedThemes = resolveMatchedThemes(userId, request.category());
 
-        if (request.category() == PlaceCategory.TOUR) {
+        if (request.category() == PlaceCategory.ATTRACTION) {
             return searchTour(regionCodes, matchedThemes, request);
         }
 
-        String contentTypeId = request.category() == PlaceCategory.LODGING ? "32" : "39";
+        String contentTypeId = request.category().contentTypeIds().get(0);
         ContentTypeResult result = fetchForContentType(regionCodes, contentTypeId, matchedThemes,
                 request.size(), request.page());
         return buildResponse(result.items(), result.totalCountApprox(), result.hasNext(), request);
     }
 
-    // TOUR = 관광지(12)+문화시설(14) 고정 비율 7:3 배분, 한쪽이 소진되면 반대쪽에서 채움 (3장 3단계).
+    // ATTRACTION = 관광지(12)+문화시설(14) 고정 비율 7:3 배분, 한쪽이 소진되면 반대쪽에서 채움 (3장 3단계).
     private PlaceSearchResponse searchTour(List<DestinationRegionCode> regionCodes,
             List<PreferredThemeLclsSystmCode> matchedThemes, PlaceSearchRequest request) {
+
+        String attractionTypeId = PlaceCategory.ATTRACTION.contentTypeIds().get(0);
+        String cultureTypeId = PlaceCategory.ATTRACTION.contentTypeIds().get(1);
 
         int[] split = tourSizeSplit(request.size());
         int attractionSize = split[0];
         int cultureSize = split[1];
 
-        ContentTypeResult attraction = fetchForContentType(regionCodes, "12", matchedThemes, attractionSize, request.page());
-        ContentTypeResult culture = fetchForContentType(regionCodes, "14", matchedThemes, cultureSize, request.page());
+        ContentTypeResult attraction = fetchForContentType(regionCodes, attractionTypeId, matchedThemes, attractionSize, request.page());
+        ContentTypeResult culture = fetchForContentType(regionCodes, cultureTypeId, matchedThemes, cultureSize, request.page());
 
         List<AreaBasedListItem> combined = mergeDistinct(attraction.items(), culture.items(), request.size());
 
         int shortfall = request.size() - combined.size();
         if (shortfall > 0) {
             if (attraction.items().size() >= attractionSize && culture.items().size() < cultureSize) {
-                ContentTypeResult moreAttraction = fetchForContentType(regionCodes, "12", matchedThemes,
+                ContentTypeResult moreAttraction = fetchForContentType(regionCodes, attractionTypeId, matchedThemes,
                         attractionSize + shortfall, request.page());
                 combined = mergeDistinct(moreAttraction.items(), culture.items(), request.size());
             } else if (culture.items().size() >= cultureSize && attraction.items().size() < attractionSize) {
-                ContentTypeResult moreCulture = fetchForContentType(regionCodes, "14", matchedThemes,
+                ContentTypeResult moreCulture = fetchForContentType(regionCodes, cultureTypeId, matchedThemes,
                         cultureSize + shortfall, request.page());
                 combined = mergeDistinct(attraction.items(), moreCulture.items(), request.size());
             }
@@ -250,7 +253,7 @@ public class PlaceService {
         return new ArrayList<>(merged.values());
     }
 
-    // 요청 카테고리(TOUR/LODGING/RESTAURANT)를 선호테마 카테고리(ATTRACTION/ACCOMMODATION/RESTAURANT)로 변환(7-1절).
+    // 요청 카테고리(ATTRACTION/ACCOMMODATION/RESTAURANT)를 선호테마 카테고리(ATTRACTION/ACCOMMODATION/RESTAURANT)로 변환(7-1절).
     private List<PreferredThemeLclsSystmCode> resolveMatchedThemes(UUID userId, PlaceCategory category) {
         if (userId == null) {
             return List.of();
@@ -264,8 +267,8 @@ public class PlaceService {
 
     private PreferredThemeCategory toPreferredThemeCategory(PlaceCategory category) {
         return switch (category) {
-            case TOUR -> PreferredThemeCategory.ATTRACTION;
-            case LODGING -> PreferredThemeCategory.ACCOMMODATION;
+            case ATTRACTION -> PreferredThemeCategory.ATTRACTION;
+            case ACCOMMODATION -> PreferredThemeCategory.ACCOMMODATION;
             case RESTAURANT -> PreferredThemeCategory.RESTAURANT;
         };
     }
