@@ -208,7 +208,7 @@ class PlanServiceTest {
                 new TimetableDto(day2, LocalTime.of(9, 0), LocalTime.of(20, 0)));
         List<TimetablePlaceBlockDto> blocks = List.of(
                 new TimetablePlaceBlockDto(day1, BlockCategory.ATTRACTION, "place-1", "경복궁",
-                        BigDecimal.valueOf(4.5), "서울 종로구", BigDecimal.valueOf(37.57), BigDecimal.valueOf(126.97),
+                        "12", "서울 종로구", null, null, BigDecimal.valueOf(37.57), BigDecimal.valueOf(126.97),
                         LocalTime.of(10, 0), LocalTime.of(12, 0), "메모"));
 
         CreatePlanRequest request = new CreatePlanRequest(planFrame, timetables, blocks);
@@ -280,9 +280,9 @@ class PlanServiceTest {
         PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, TransportationType.PRIVATE, 1, 0);
         List<TimetableDto> timetables = List.of(new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)));
         List<TimetablePlaceBlockDto> blocks = List.of(
-                new TimetablePlaceBlockDto(day1, BlockCategory.ATTRACTION, "p1", "장소1", null, null, null, null,
+                new TimetablePlaceBlockDto(day1, BlockCategory.ATTRACTION, "p1", "장소1", null, null, null, null, null, null,
                         LocalTime.of(10, 0), LocalTime.of(11, 0), null),
-                new TimetablePlaceBlockDto(day1, BlockCategory.RESTAURANT, "p2", "장소2", null, null, null, null,
+                new TimetablePlaceBlockDto(day1, BlockCategory.RESTAURANT, "p2", "장소2", null, null, null, null, null, null,
                         LocalTime.of(10, 0), LocalTime.of(11, 30), null));
 
         CreatePlanRequest request = new CreatePlanRequest(planFrame, timetables, blocks);
@@ -304,7 +304,7 @@ class PlanServiceTest {
         PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, TransportationType.PRIVATE, 1, 0);
         List<TimetableDto> timetables = List.of(new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)));
         List<TimetablePlaceBlockDto> blocks = List.of(
-                new TimetablePlaceBlockDto(day2, BlockCategory.ATTRACTION, "p1", "장소1", null, null, null, null,
+                new TimetablePlaceBlockDto(day2, BlockCategory.ATTRACTION, "p1", "장소1", null, null, null, null, null, null,
                         LocalTime.of(10, 0), LocalTime.of(11, 0), null));
 
         CreatePlanRequest request = new CreatePlanRequest(planFrame, timetables, blocks);

@@ -183,20 +183,22 @@ CREATE TABLE time_table (
 -- 8. time_table_place_block
 -- ------------------------------------------------------------
 CREATE TABLE time_table_place_block (
-    block_id         BIGINT       GENERATED ALWAYS AS IDENTITY,
-    time_table_id    BIGINT       NOT NULL,
-    place_id         VARCHAR(100),
-    place_name       VARCHAR(255) NOT NULL,
-    place_rating     NUMERIC(3, 1),
-    place_address    TEXT,
-    latitude         NUMERIC(10, 8),
-    longitude        NUMERIC(11, 8),
-    block_start_time TIME         NOT NULL,
-    block_end_time   TIME         NOT NULL,
-    block_category   VARCHAR(10)  NOT NULL,
-    memo             TEXT,
-    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    block_id                BIGINT       GENERATED ALWAYS AS IDENTITY,
+    time_table_id           BIGINT       NOT NULL,
+    place_id                VARCHAR(100),
+    place_name              VARCHAR(255) NOT NULL,
+    place_content_type_id   VARCHAR(10),
+    place_address           TEXT,
+    place_thumbnail_url     TEXT,
+    place_copyright_div_cd  VARCHAR(10),
+    latitude                NUMERIC(10, 8),
+    longitude               NUMERIC(11, 8),
+    block_start_time        TIME         NOT NULL,
+    block_end_time          TIME         NOT NULL,
+    block_category          VARCHAR(10)  NOT NULL,
+    memo                    TEXT,
+    created_at              TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT pk_time_table_place_block
         PRIMARY KEY (block_id),
@@ -204,8 +206,6 @@ CREATE TABLE time_table_place_block (
         UNIQUE (time_table_id, block_start_time),
     CONSTRAINT chk_block_category
         CHECK (block_category IN ('관광지', '숙소', '식당', '자유', '검색')),
-    CONSTRAINT chk_block_place_rating
-        CHECK (place_rating IS NULL OR place_rating BETWEEN 0.0 AND 5.0),
     CONSTRAINT fk_block_time_table
         FOREIGN KEY (time_table_id)
             REFERENCES time_table (time_table_id)
@@ -266,3 +266,49 @@ CREATE TABLE beta_feedback (
 
     CONSTRAINT pk_beta_feedback PRIMARY KEY (feedback_id)
 );
+
+-- ------------------------------------------------------------
+-- 11. destination_region_code  (destination ↔ TourAPI 법정동코드 매핑)
+-- ------------------------------------------------------------
+CREATE TABLE destination_region_code (
+    destination_region_code_id INT         GENERATED ALWAYS AS IDENTITY,
+    destination_id              INT         NOT NULL,
+    ldong_regn_cd                VARCHAR(10) NOT NULL,
+    ldong_signgu_cd               VARCHAR(10),
+
+    CONSTRAINT pk_destination_region_code
+        PRIMARY KEY (destination_region_code_id),
+    CONSTRAINT uk_destination_region_code_dest_regn_signgu
+        UNIQUE (destination_id, ldong_regn_cd, ldong_signgu_cd),
+    CONSTRAINT fk_destination_region_code_destination
+        FOREIGN KEY (destination_id)
+            REFERENCES destination (destination_id)
+            ON DELETE CASCADE
+);
+
+CREATE INDEX idx_destination_region_code_destination_id
+    ON destination_region_code (destination_id);
+
+-- ------------------------------------------------------------
+-- 12. preferred_theme_lcls_systm_code  (preferred_theme ↔ TourAPI lclsSystm 코드 매핑)
+-- ------------------------------------------------------------
+CREATE TABLE preferred_theme_lcls_systm_code (
+    preferred_theme_lcls_systm_code_id INT      GENERATED ALWAYS AS IDENTITY,
+    preferred_theme_id                 INT      NOT NULL,
+    lcls_systm_level                   SMALLINT NOT NULL,   -- 1=lclsSystm1, 2=lclsSystm2, 3=lclsSystm3 중 어느 파라미터에 넣을지
+    lcls_systm_cd                      VARCHAR(10) NOT NULL,
+
+    CONSTRAINT pk_preferred_theme_lcls_systm_code
+        PRIMARY KEY (preferred_theme_lcls_systm_code_id),
+    CONSTRAINT uk_preferred_theme_lcls_systm_code
+        UNIQUE (preferred_theme_id, lcls_systm_level, lcls_systm_cd),
+    CONSTRAINT chk_preferred_theme_lcls_systm_level
+        CHECK (lcls_systm_level IN (1, 2, 3)),
+    CONSTRAINT fk_preferred_theme_lcls_systm_code_theme
+        FOREIGN KEY (preferred_theme_id)
+            REFERENCES preferred_theme (preferred_theme_id)
+            ON DELETE CASCADE
+);
+
+CREATE INDEX idx_preferred_theme_lcls_systm_code_theme_id
+    ON preferred_theme_lcls_systm_code (preferred_theme_id);

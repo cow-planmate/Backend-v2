@@ -2,8 +2,6 @@ package com.planmate.domain.plan.dto;
 
 import com.planmate.domain.timetable.enums.BlockCategory;
 import jakarta.validation.constraints.AssertTrue;
-import jakarta.validation.constraints.DecimalMax;
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
@@ -16,8 +14,10 @@ public record TimetablePlaceBlockDto(
         @NotNull BlockCategory blockCategory,
         String placeId,
         @NotBlank String placeName,
-        @DecimalMin("0.0") @DecimalMax("5.0") BigDecimal placeRating,
+        String placeContentTypeId,
         String placeAddress,
+        String placeThumbnailUrl,
+        String placeCopyrightDivCd,
         BigDecimal latitude,
         BigDecimal longitude,
         @NotNull LocalTime blockStartTime,
