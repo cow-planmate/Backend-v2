@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.planmate'
 version = '0.0.1-SNAPSHOT'
-def sharedSyncVersion = 'c0e567f718'
+def sharedSyncVersion = '5b3245b214'
 
 java {
     toolchain {
