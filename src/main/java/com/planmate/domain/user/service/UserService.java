@@ -5,6 +5,7 @@ import com.planmate.common.exception.domain.PreferredThemeCategoryMismatchExcept
 import com.planmate.common.exception.domain.ProfilePrivateException;
 import com.planmate.common.exception.domain.PreferredThemeNotFoundException;
 import com.planmate.common.exception.domain.UserNotFoundException;
+import com.planmate.common.storage.ProfileImageStorage;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
@@ -15,6 +16,7 @@ import com.planmate.domain.theme.enums.PreferredThemeCategory;
 import com.planmate.domain.theme.repository.PreferredThemeRepository;
 import com.planmate.domain.theme.repository.UserPreferredThemeRepository;
 import com.planmate.domain.user.dto.PreferredThemeListResponse;
+import com.planmate.domain.user.dto.ProfileImageResponse;
 import com.planmate.domain.user.dto.PublicUserProfileResponse;
 import com.planmate.domain.user.dto.SimplePlanDto;
 import com.planmate.domain.user.dto.UserProfileResponse;
@@ -22,9 +24,11 @@ import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.Gender;
 import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.repository.UserRepository;
+import com.planmate.domain.user.validator.ProfileImageValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -40,6 +44,8 @@ public class UserService {
     private final PreferredThemeRepository preferredThemeRepository;
     private final UserPreferredThemeRepository userPreferredThemeRepository;
     private final PlanMemberRepository planMemberRepository;
+    private final ProfileImageStorage profileImageStorage;
+    private final ProfileImageValidator profileImageValidator;
 
     @Transactional(readOnly = true)
     public PreferredThemeListResponse getPreferredThemes() {
@@ -100,6 +106,7 @@ public class UserService {
                 .nickname(user.getNickname())
                 .birthdate(user.getBirthdate())
                 .gender(user.getGender() == null ? null : user.getGender().name())
+                .profileImageUrl(user.getProfileImageUrl())
                 .isSocialLogin(user.getProvider() != UserProvider.LOCAL)
                 .profilePublic(user.isProfilePublic())
                 .myPlans(myPlans)
@@ -135,10 +142,39 @@ public class UserService {
         return PublicUserProfileResponse.builder()
                 .userId(user.getUserId())
                 .nickname(user.getNickname())
+                .profileImageUrl(user.getProfileImageUrl())
                 .preferredThemes(preferredThemes)
                 .myPlanCount(myPlanCount)
                 .editablePlanCount(editablePlanCount)
                 .build();
+    }
+
+    /**
+     * 프로필 이미지 교체. 새 파일을 먼저 올린 뒤 URL을 바꾸고, 성공한 뒤에 이전 파일을 지운다.
+     * 업로드가 실패하면 기존 이미지가 그대로 남는다.
+     */
+    @Transactional
+    public ProfileImageResponse changeProfileImage(UUID userId, MultipartFile file) {
+        profileImageValidator.validate(file);
+
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+
+        String previousUrl = user.getProfileImageUrl();
+        String newUrl = profileImageStorage.upload(userId, file);
+        user.changeProfileImageUrl(newUrl);
+
+        profileImageStorage.delete(previousUrl);
+        return new ProfileImageResponse(newUrl);
+    }
+
+    /** 프로필 이미지 제거 — 클라이언트는 다시 Gravatar로 표시한다. */
+    @Transactional
+    public void deleteProfileImage(UUID userId) {
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+
+        String previousUrl = user.getProfileImageUrl();
+        user.changeProfileImageUrl(null);
+        profileImageStorage.delete(previousUrl);
     }
 
     @Transactional

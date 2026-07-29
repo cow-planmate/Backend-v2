@@ -17,6 +17,7 @@ import java.util.UUID;
 public record PublicUserProfileResponse(
         UUID userId,
         String nickname,
+        String profileImageUrl,
         List<PreferredThemeDto> preferredThemes,
         int myPlanCount,
         int editablePlanCount
