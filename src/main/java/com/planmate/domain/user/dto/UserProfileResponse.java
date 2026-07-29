@@ -15,6 +15,7 @@ public record UserProfileResponse(
         LocalDate birthdate,
         String gender,
         boolean isSocialLogin,
+        boolean profilePublic,
         List<SimplePlanDto> myPlans,
         List<SimplePlanDto> editablePlans,
         List<PreferredThemeDto> preferredThemes

@@ -3,8 +3,10 @@ package com.planmate.domain.user.controller;
 import com.planmate.domain.user.dto.ChangeBirthdateRequest;
 import com.planmate.domain.user.dto.ChangeGenderRequest;
 import com.planmate.domain.user.dto.ChangeNicknameRequest;
+import com.planmate.domain.user.dto.ChangeProfileVisibilityRequest;
 import com.planmate.domain.user.dto.ChangePreferredThemesRequest;
 import com.planmate.domain.user.dto.PreferredThemeListResponse;
+import com.planmate.domain.user.dto.PublicUserProfileResponse;
 import com.planmate.domain.user.dto.RegisterFcmTokenRequest;
 import com.planmate.domain.user.dto.SavePreferredThemeRequest;
 import com.planmate.domain.user.dto.UserProfileResponse;
@@ -16,6 +18,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,6 +48,19 @@ public class UserController {
     @GetMapping("/profile")
     public ResponseEntity<UserProfileResponse> getProfile(@AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(userService.getProfile(userId));
+    }
+
+    @GetMapping("/profile/{targetUserId}")
+    public ResponseEntity<PublicUserProfileResponse> getPublicProfile(@AuthenticationPrincipal UUID userId,
+                                                                      @PathVariable UUID targetUserId) {
+        return ResponseEntity.ok(userService.getPublicProfile(userId, targetUserId));
+    }
+
+    @PatchMapping("/profile/visibility")
+    public ResponseEntity<Void> changeProfileVisibility(@AuthenticationPrincipal UUID userId,
+                                                         @Valid @RequestBody ChangeProfileVisibilityRequest request) {
+        userService.changeProfileVisibility(userId, request.profilePublic());
+        return ResponseEntity.noContent().build();
     }
 
     @PatchMapping("/nickname")

@@ -18,6 +18,7 @@ import com.planmate.domain.user.dto.ChangeBirthdateRequest;
 import com.planmate.domain.user.dto.ChangeGenderRequest;
 import com.planmate.domain.user.dto.ChangeNicknameRequest;
 import com.planmate.domain.user.dto.ChangePreferredThemesRequest;
+import com.planmate.domain.user.dto.ChangeProfileVisibilityRequest;
 import com.planmate.domain.user.dto.RegisterFcmTokenRequest;
 import com.planmate.domain.user.dto.SavePreferredThemeRequest;
 import com.planmate.domain.user.entity.User;
@@ -334,6 +335,146 @@ class UserControllerTest {
     void getProfile_fail_noAuth() throws Exception {
         mockMvc.perform(get("/api/user/profile"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("타인 프로필 조회 성공 - 200, 공개 프로필도 닉네임/일정 개수만 주고 이메일·생년월일·성별은 응답에 없음")
+    void getPublicProfile_success() throws Exception {
+        User other = createOtherUser(true);
+        Plan ownedPlan = createPlanOwnedBy(other);
+        planMemberRepository.save(PlanMember.builder()
+                .plan(ownedPlan)
+                .user(other)
+                .role(PlanMemberRole.OWNER)
+                .build());
+
+        mockMvc.perform(get("/api/user/profile/" + other.getUserId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(other.getUserId().toString()))
+                .andExpect(jsonPath("$.nickname").value(other.getNickname()))
+                .andExpect(jsonPath("$.myPlanCount").value(1))
+                .andExpect(jsonPath("$.editablePlanCount").value(0))
+                .andExpect(jsonPath("$.email").doesNotExist())
+                .andExpect(jsonPath("$.birthdate").doesNotExist())
+                .andExpect(jsonPath("$.gender").doesNotExist())
+                .andExpect(jsonPath("$.isSocialLogin").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("타인 프로필 조회 실패 - 기본값이 비공개라 공개 설정을 켠 적 없는 사용자는 403")
+    void getPublicProfile_fail_defaultsToPrivate() throws Exception {
+        User other = userRepository.saveAndFlush(User.builder()
+                .provider(UserProvider.LOCAL)
+                .email("default-" + UUID.randomUUID() + "@example.com")
+                .nickname("default-" + UUID.randomUUID().toString().substring(0, 8))
+                .role(UserRole.USER)
+                .build());
+
+        assertThat(other.isProfilePublic()).isFalse();
+
+        mockMvc.perform(get("/api/user/profile/" + other.getUserId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("USER_002"));
+    }
+
+    @Test
+    @DisplayName("타인 프로필 조회 실패 - 비공개 프로필이면 403, USER_002")
+    void getPublicProfile_fail_privateProfile() throws Exception {
+        User other = createOtherUser(false);
+
+        mockMvc.perform(get("/api/user/profile/" + other.getUserId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("USER_002"));
+    }
+
+    @Test
+    @DisplayName("타인 프로필 조회 성공 - 비공개로 설정해도 본인은 자기 프로필을 볼 수 있음")
+    void getPublicProfile_success_selfCanViewOwnPrivateProfile() throws Exception {
+        testUser.changeProfilePublic(false);
+        userRepository.saveAndFlush(testUser);
+
+        mockMvc.perform(get("/api/user/profile/" + testUser.getUserId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nickname").value(testUser.getNickname()));
+    }
+
+    @Test
+    @DisplayName("타인 프로필 조회 실패 - 존재하지 않는 사용자면 404, USER_001")
+    void getPublicProfile_fail_userNotFound() throws Exception {
+        mockMvc.perform(get("/api/user/profile/" + UUID.randomUUID())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_001"));
+    }
+
+    @Test
+    @DisplayName("프로필 공개 설정 변경 성공 - 204, 공개/비공개 양방향 전환이 DB와 본인 프로필 응답에 반영됨")
+    void changeProfileVisibility_success() throws Exception {
+        mockMvc.perform(patch("/api/user/profile/visibility")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ChangeProfileVisibilityRequest(true))))
+                .andExpect(status().isNoContent());
+
+        assertThat(userRepository.findById(testUser.getUserId()).orElseThrow().isProfilePublic()).isTrue();
+
+        mockMvc.perform(get("/api/user/profile")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profilePublic").value(true));
+
+        mockMvc.perform(patch("/api/user/profile/visibility")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ChangeProfileVisibilityRequest(false))))
+                .andExpect(status().isNoContent());
+
+        assertThat(userRepository.findById(testUser.getUserId()).orElseThrow().isProfilePublic()).isFalse();
+
+        mockMvc.perform(get("/api/user/profile")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profilePublic").value(false));
+    }
+
+    @Test
+    @DisplayName("프로필 공개 설정 변경 실패 - 인증 토큰 없으면 401")
+    void changeProfileVisibility_fail_noAuth() throws Exception {
+        mockMvc.perform(patch("/api/user/profile/visibility")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ChangeProfileVisibilityRequest(false))))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private User createOtherUser(boolean profilePublic) {
+        return userRepository.saveAndFlush(User.builder()
+                .provider(UserProvider.LOCAL)
+                .email("other-" + UUID.randomUUID() + "@example.com")
+                .nickname("other-" + UUID.randomUUID().toString().substring(0, 8))
+                .birthdate(LocalDate.of(1995, 3, 10))
+                .gender(Gender.MALE)
+                .role(UserRole.USER)
+                .profilePublic(profilePublic)
+                .build());
+    }
+
+    private Plan createPlanOwnedBy(User owner) {
+        Destination destination = destinationRepository.save(Destination.builder()
+                .destinationName("destination-" + UUID.randomUUID())
+                .build());
+        return planRepository.save(Plan.builder()
+                .planName("부산 여행")
+                .adultCount(1)
+                .childCount(0)
+                .transportationType(TransportationType.PUBLIC)
+                .isShared(false)
+                .user(owner)
+                .destination(destination)
+                .build());
     }
 
     @Test
