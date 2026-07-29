@@ -37,7 +37,7 @@ public class InternalUserController {
         }
 
         List<InternalUserResponse> response = userRepository.findAllById(userIds).stream()
-                .map(u -> new InternalUserResponse(u.getUserId(), u.getNickname()))
+                .map(u -> new InternalUserResponse(u.getUserId(), u.getNickname(), u.isProfilePublic()))
                 .toList();
 
         return ResponseEntity.ok(response);

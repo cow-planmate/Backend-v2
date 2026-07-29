@@ -27,6 +27,7 @@ public enum ErrorCode {
 
     // 사용자
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자를 찾을 수 없습니다."),
+    PROFILE_PRIVATE(HttpStatus.FORBIDDEN, "USER_002", "비공개 프로필입니다."),
 
     // 선호 테마
     PREFERRED_THEME_NOT_FOUND(HttpStatus.NOT_FOUND, "THEME_001", "존재하지 않는 선호 테마입니다."),

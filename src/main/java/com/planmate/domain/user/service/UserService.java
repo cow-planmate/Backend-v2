@@ -2,6 +2,7 @@ package com.planmate.domain.user.service;
 
 import com.planmate.common.exception.domain.DuplicateNicknameException;
 import com.planmate.common.exception.domain.PreferredThemeCategoryMismatchException;
+import com.planmate.common.exception.domain.ProfilePrivateException;
 import com.planmate.common.exception.domain.PreferredThemeNotFoundException;
 import com.planmate.common.exception.domain.UserNotFoundException;
 import com.planmate.domain.plan.entity.PlanMember;
@@ -14,6 +15,7 @@ import com.planmate.domain.theme.enums.PreferredThemeCategory;
 import com.planmate.domain.theme.repository.PreferredThemeRepository;
 import com.planmate.domain.theme.repository.UserPreferredThemeRepository;
 import com.planmate.domain.user.dto.PreferredThemeListResponse;
+import com.planmate.domain.user.dto.PublicUserProfileResponse;
 import com.planmate.domain.user.dto.SimplePlanDto;
 import com.planmate.domain.user.dto.UserProfileResponse;
 import com.planmate.domain.user.entity.User;
@@ -99,10 +101,50 @@ public class UserService {
                 .birthdate(user.getBirthdate())
                 .gender(user.getGender() == null ? null : user.getGender().name())
                 .isSocialLogin(user.getProvider() != UserProvider.LOCAL)
+                .profilePublic(user.isProfilePublic())
                 .myPlans(myPlans)
                 .editablePlans(editablePlans)
                 .preferredThemes(preferredThemes)
                 .build();
+    }
+
+    /**
+     * 타인 프로필 조회. 프로필은 기본 비공개이며, 비공개 프로필은 본인만 볼 수 있다.
+     * 공개 프로필이라도 이메일·생년월일·성별은 응답에 담지 않는다.
+     */
+    @Transactional(readOnly = true)
+    public PublicUserProfileResponse getPublicProfile(UUID viewerId, UUID targetUserId) {
+        User user = userRepository.findById(targetUserId).orElseThrow(UserNotFoundException::new);
+
+        if (!user.isProfilePublic() && !user.getUserId().equals(viewerId)) {
+            throw new ProfilePrivateException();
+        }
+
+        List<PreferredThemeDto> preferredThemes = userPreferredThemeRepository.findByUserUserId(targetUserId).stream()
+                .map(userPreferredTheme -> PreferredThemeDto.from(userPreferredTheme.getPreferredTheme()))
+                .toList();
+
+        List<PlanMember> planMembers = planMemberRepository.findByUserUserId(targetUserId);
+        int myPlanCount = (int) planMembers.stream()
+                .filter(planMember -> planMember.getRole() == PlanMemberRole.OWNER)
+                .count();
+        int editablePlanCount = (int) planMembers.stream()
+                .filter(planMember -> planMember.getRole() == PlanMemberRole.EDITOR)
+                .count();
+
+        return PublicUserProfileResponse.builder()
+                .userId(user.getUserId())
+                .nickname(user.getNickname())
+                .preferredThemes(preferredThemes)
+                .myPlanCount(myPlanCount)
+                .editablePlanCount(editablePlanCount)
+                .build();
+    }
+
+    @Transactional
+    public void changeProfileVisibility(UUID userId, boolean profilePublic) {
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+        user.changeProfilePublic(profilePublic);
     }
 
     @Transactional

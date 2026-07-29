@@ -69,6 +69,14 @@ public class User extends BaseSoftDeleteEntity {
     @Builder.Default
     private UserRole role = UserRole.USER;
 
+    /**
+     * 프로필 공개 여부 — 기본 비공개.
+     * false면 타인은 프로필도, 프로필에 묶인 게시글 목록도 볼 수 없다(본인 조회는 항상 허용).
+     */
+    @Column(name = "profile_public", nullable = false)
+    @Builder.Default
+    private boolean profilePublic = false;
+
     @PrePersist
     void assignId() {
         if (this.userId == null) {
@@ -94,5 +102,9 @@ public class User extends BaseSoftDeleteEntity {
 
     public void changeFcmToken(String newFcmToken) {
         this.fcmToken = newFcmToken;
+    }
+
+    public void changeProfilePublic(boolean newProfilePublic) {
+        this.profilePublic = newProfilePublic;
     }
 }
