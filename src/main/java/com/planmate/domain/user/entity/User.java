@@ -64,6 +64,10 @@ public class User extends BaseSoftDeleteEntity {
     @Column(name = "fcm_token", columnDefinition = "TEXT")
     private String fcmToken;
 
+    /** 프로필 이미지 공개 URL. null이면 클라이언트가 이메일 기반 Gravatar로 대체한다. */
+    @Column(name = "profile_image_url", length = 500)
+    private String profileImageUrl;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
     @Builder.Default
@@ -106,5 +110,9 @@ public class User extends BaseSoftDeleteEntity {
 
     public void changeProfilePublic(boolean newProfilePublic) {
         this.profilePublic = newProfilePublic;
+    }
+
+    public void changeProfileImageUrl(String newProfileImageUrl) {
+        this.profileImageUrl = newProfileImageUrl;
     }
 }

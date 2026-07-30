@@ -28,6 +28,9 @@ public enum ErrorCode {
     // 사용자
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자를 찾을 수 없습니다."),
     PROFILE_PRIVATE(HttpStatus.FORBIDDEN, "USER_002", "비공개 프로필입니다."),
+    PROFILE_IMAGE_UNSUPPORTED_TYPE(HttpStatus.BAD_REQUEST, "USER_003", "지원하지 않는 이미지 형식입니다. (jpeg, png, gif, webp)"),
+    PROFILE_IMAGE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "USER_004", "이미지 크기는 5MB를 넘을 수 없습니다."),
+    PROFILE_IMAGE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "USER_005", "이미지 업로드에 실패했습니다."),
 
     // 선호 테마
     PREFERRED_THEME_NOT_FOUND(HttpStatus.NOT_FOUND, "THEME_001", "존재하지 않는 선호 테마입니다."),

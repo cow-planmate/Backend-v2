@@ -14,6 +14,7 @@ public record UserProfileResponse(
         String nickname,
         LocalDate birthdate,
         String gender,
+        String profileImageUrl,
         boolean isSocialLogin,
         boolean profilePublic,
         List<SimplePlanDto> myPlans,

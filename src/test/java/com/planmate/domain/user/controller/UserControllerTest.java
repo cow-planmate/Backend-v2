@@ -21,6 +21,7 @@ import com.planmate.domain.user.dto.ChangePreferredThemesRequest;
 import com.planmate.domain.user.dto.ChangeProfileVisibilityRequest;
 import com.planmate.domain.user.dto.RegisterFcmTokenRequest;
 import com.planmate.domain.user.dto.SavePreferredThemeRequest;
+import com.planmate.common.storage.ProfileImageStorage;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.Gender;
 import com.planmate.domain.user.enums.UserProvider;
@@ -36,6 +37,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,8 +49,13 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -81,6 +89,11 @@ class UserControllerTest {
     @Autowired
     private EntityManager entityManager;
 
+    // 실제 오브젝트 스토리지에 붙지 않는다 — 검증 대상은 업로드 결과 URL이 DB·응답에
+    // 반영되는 배선이고, MinIO 왕복 자체는 자격증명/네트워크에 의존해 테스트가 취약해진다.
+    @MockitoBean
+    private ProfileImageStorage profileImageStorage;
+
     private User testUser;
     private String accessToken;
 
@@ -100,6 +113,11 @@ class UserControllerTest {
                 .role(UserRole.USER)
                 .build());
         accessToken = jwtTokenProvider.createAccessToken(testUser.getUserId(), testUser.getRole().name());
+
+        // 실제 ProfileImageStorage가 만드는 것과 같은 형태(사용자별 경로 + 매번 새 UUID)를 흉내낸다
+        when(profileImageStorage.upload(any(UUID.class), any()))
+                .thenAnswer(invocation -> "http://localhost:9000/planmate/profile/"
+                        + invocation.getArgument(0) + "/" + UUID.randomUUID() + ".png");
     }
 
     @Test
@@ -439,6 +457,99 @@ class UserControllerTest {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.profilePublic").value(false));
+    }
+
+    @Test
+    @DisplayName("프로필 이미지 업로드 성공 - 200, URL이 DB와 프로필 응답에 반영됨")
+    void changeProfileImage_success() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "avatar.png", "image/png", "fake-png-bytes".getBytes());
+
+        String body = mockMvc.perform(multipart("/api/user/profile-image").file(file)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profileImageUrl").exists())
+                .andReturn().getResponse().getContentAsString();
+
+        String url = objectMapper.readTree(body).get("profileImageUrl").asText();
+        assertThat(url).contains("profile/" + testUser.getUserId() + "/");
+        assertThat(userRepository.findById(testUser.getUserId()).orElseThrow().getProfileImageUrl()).isEqualTo(url);
+
+        mockMvc.perform(get("/api/user/profile")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profileImageUrl").value(url));
+    }
+
+    @Test
+    @DisplayName("프로필 이미지 교체 성공 - URL이 새 값으로 바뀐다(같은 경로 덮어쓰기가 아님)")
+    void changeProfileImage_success_replacesPreviousUrl() throws Exception {
+        String first = uploadProfileImage("first.png");
+        String second = uploadProfileImage("second.png");
+
+        assertThat(second).isNotEqualTo(first);
+        assertThat(userRepository.findById(testUser.getUserId()).orElseThrow().getProfileImageUrl()).isEqualTo(second);
+        // 교체 시 이전 파일 정리를 요청한다 (저장소 낭비 방지)
+        verify(profileImageStorage).delete(first);
+    }
+
+    @Test
+    @DisplayName("프로필 이미지 업로드 실패 - 이미지가 아니면 400, USER_003")
+    void changeProfileImage_fail_unsupportedType() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "resume.pdf", "application/pdf", "not-an-image".getBytes());
+
+        mockMvc.perform(multipart("/api/user/profile-image").file(file)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("USER_003"));
+
+        assertThat(userRepository.findById(testUser.getUserId()).orElseThrow().getProfileImageUrl()).isNull();
+    }
+
+    @Test
+    @DisplayName("프로필 이미지 삭제 성공 - 204, URL이 null이 되어 Gravatar로 되돌아간다")
+    void deleteProfileImage_success() throws Exception {
+        uploadProfileImage("avatar.png");
+
+        mockMvc.perform(delete("/api/user/profile-image")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNoContent());
+
+        assertThat(userRepository.findById(testUser.getUserId()).orElseThrow().getProfileImageUrl()).isNull();
+    }
+
+    @Test
+    @DisplayName("프로필 이미지 업로드 실패 - 인증 토큰 없으면 401")
+    void changeProfileImage_fail_noAuth() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "avatar.png", "image/png", "fake-png-bytes".getBytes());
+
+        mockMvc.perform(multipart("/api/user/profile-image").file(file))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("타인 프로필 조회 - 공개 프로필이면 프로필 이미지 URL이 함께 내려온다")
+    void getPublicProfile_includesProfileImage() throws Exception {
+        User other = createOtherUser(true);
+        other.changeProfileImageUrl("http://localhost:9000/planmate/profile/x/y.png");
+        userRepository.saveAndFlush(other);
+
+        mockMvc.perform(get("/api/user/profile/" + other.getUserId())
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profileImageUrl").value("http://localhost:9000/planmate/profile/x/y.png"));
+    }
+
+    private String uploadProfileImage(String filename) throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", filename, "image/png", ("bytes-of-" + filename).getBytes());
+        String body = mockMvc.perform(multipart("/api/user/profile-image").file(file)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(body).get("profileImageUrl").asText();
     }
 
     @Test

@@ -31,6 +31,11 @@ spring:
     enabled: true
     baseline-on-migrate: false
 
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
   mail:
     host: smtps.hiworks.com
     port: 465
@@ -51,6 +56,13 @@ spring:
       sentinel:
         master: ${SPRING_DATA_REDIS_SENTINEL_MASTER:}
         nodes: ${SPRING_DATA_REDIS_SENTINEL_NODES:}
+
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket: ${MINIO_BUCKET:planmate}
+  public-url: ${MINIO_PUBLIC_URL:http://localhost:9000}
 
 internal:
   api-token: ${INTERNAL_API_TOKEN:local-internal-token}

@@ -6,6 +6,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
@@ -41,6 +42,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(ErrorCode.INVALID_INPUT.getHttpStatus())
                 .body(ErrorResponse.of(ErrorCode.INVALID_INPUT));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException e) {
+        // spring.servlet.multipart 제한은 컨트롤러 진입 전에 걸린다 - 도메인 에러코드로 맞춰준다
+        log.warn("MaxUploadSizeExceededException: {}", e.getMessage());
+        return ResponseEntity
+                .status(ErrorCode.PROFILE_IMAGE_TOO_LARGE.getHttpStatus())
+                .body(ErrorResponse.of(ErrorCode.PROFILE_IMAGE_TOO_LARGE));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
