@@ -21,11 +21,8 @@ import com.planmate.domain.plan.dto.GetCompletePlanResponse;
 import com.planmate.domain.plan.dto.GetEditorsResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.dto.GetShareStatusResponse;
-import com.planmate.domain.plan.dto.PlanFrameDetailDto;
 import com.planmate.domain.plan.dto.PlanFrameDto;
-import com.planmate.domain.plan.dto.TimetableDetailDto;
 import com.planmate.domain.plan.dto.TimetableDto;
-import com.planmate.domain.plan.dto.TimetablePlaceBlockDetailDto;
 import com.planmate.domain.plan.dto.TimetablePlaceBlockDto;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
@@ -68,6 +65,7 @@ public class PlanService {
     private final TimeTableRepository timeTableRepository;
     private final TimeTablePlaceBlockRepository timeTablePlaceBlockRepository;
     private final PlanAccessValidator planAccessValidator;
+    private final PlanSnapshotReader planSnapshotReader;
 
     @Transactional
     public CreatePlanFrameResponse createPlanFrame(UUID userId, CreatePlanFrameRequest request) {
@@ -158,20 +156,10 @@ public class PlanService {
         Plan plan = planRepository.findById(planId)
                 .orElseThrow(PlanNotFoundException::new);
 
-        // TODO(sharedsync): 원본 PlanService.getPlan()은 이 지점에서
-        //   1) presenceStorage.waitForSync(planId) 로 실시간 편집 세션과의 동기화를 먼저 기다리고
-        //   2) planCache/timeTableCache/timeTablePlaceBlockCache에 최신 상태가 있으면 그걸 우선 사용했다.
-        // sharedsync 통합 범위/설계가 아직 미확정이라(전체_작업_진행상황.md 5절 1번) 지금은 DB 직접 조회만 수행한다.
-        // sharedsync 통합 착수 시 이 메서드부터 재검토할 것 — B_조회.md 10-1절 참고.
-        List<TimetableDetailDto> timetables = timeTableRepository.findByPlanPlanIdOrderByDate(planId).stream()
-                .map(TimetableDetailDto::from)
-                .toList();
-        List<TimetablePlaceBlockDetailDto> placeBlocks = timeTablePlaceBlockRepository
-                .findByPlanIdOrderByDateAndStartTime(planId).stream()
-                .map(TimetablePlaceBlockDetailDto::from)
-                .toList();
+        // 실시간 편집 중이면 최신 상태는 DB가 아니라 SharedSync 캐시에 있다. PlanSnapshotReader 참고.
+        PlanSnapshotReader.PlanSnapshot snapshot = planSnapshotReader.read(plan);
 
-        return new GetPlanResponse(PlanFrameDetailDto.from(plan), timetables, placeBlocks);
+        return new GetPlanResponse(snapshot.planFrame(), snapshot.timetables(), snapshot.placeBlocks());
     }
 
     @Transactional(readOnly = true)
@@ -186,15 +174,10 @@ public class PlanService {
             planAccessValidator.validateMember(planId, userId);
         }
 
-        List<TimetableDetailDto> timetables = timeTableRepository.findByPlanPlanIdOrderByDate(planId).stream()
-                .map(TimetableDetailDto::from)
-                .toList();
-        List<TimetablePlaceBlockDetailDto> placeBlocks = timeTablePlaceBlockRepository
-                .findByPlanIdOrderByDateAndStartTime(planId).stream()
-                .map(TimetablePlaceBlockDetailDto::from)
-                .toList();
+        // 편집 화면에서 "완료"로 넘어온 직후에는 수정분이 아직 DB에 없고 캐시에만 있다. PlanSnapshotReader 참고.
+        PlanSnapshotReader.PlanSnapshot snapshot = planSnapshotReader.read(plan);
 
-        return new GetCompletePlanResponse(PlanFrameDetailDto.from(plan), timetables, placeBlocks);
+        return new GetCompletePlanResponse(snapshot.planFrame(), snapshot.timetables(), snapshot.placeBlocks());
     }
 
     @PreAuthorize("@planAccessValidator.validateOwner(#planId, authentication.principal)")
