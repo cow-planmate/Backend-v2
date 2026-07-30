@@ -20,8 +20,11 @@ import com.planmate.domain.plan.dto.GetCompletePlanResponse;
 import com.planmate.domain.plan.dto.GetEditorsResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.dto.GetShareStatusResponse;
+import com.planmate.domain.plan.dto.PlanFrameDetailDto;
 import com.planmate.domain.plan.dto.PlanFrameDto;
+import com.planmate.domain.plan.dto.TimetableDetailDto;
 import com.planmate.domain.plan.dto.TimetableDto;
+import com.planmate.domain.plan.dto.TimetablePlaceBlockDetailDto;
 import com.planmate.domain.plan.dto.TimetablePlaceBlockDto;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
@@ -83,9 +86,19 @@ class PlanServiceTest {
     private TimeTablePlaceBlockRepository timeTablePlaceBlockRepository;
     @Mock
     private PlanAccessValidator planAccessValidator;
+    @Mock
+    private PlanSnapshotReader planSnapshotReader;
 
     @InjectMocks
     private PlanService planService;
+
+    /** 캐시/DB 중 어디서 읽을지는 PlanSnapshotReaderTest에서 검증한다. 여기서는 조립 결과만 주입한다. */
+    private void givenSnapshot(Plan plan,
+                               List<TimetableDetailDto> timetables,
+                               List<TimetablePlaceBlockDetailDto> placeBlocks) {
+        given(planSnapshotReader.read(plan)).willReturn(new PlanSnapshotReader.PlanSnapshot(
+                PlanFrameDetailDto.from(plan), timetables, placeBlocks));
+    }
 
     private Destination destination() {
         return Destination.builder()
@@ -344,7 +357,6 @@ class PlanServiceTest {
                 .timeTableEndTime(LocalTime.of(20, 0))
                 .plan(plan)
                 .build();
-        given(timeTableRepository.findByPlanPlanIdOrderByDate(PLAN_ID)).willReturn(List.of(timeTable));
 
         TimeTablePlaceBlock block = TimeTablePlaceBlock.builder()
                 .blockId(10L)
@@ -354,7 +366,10 @@ class PlanServiceTest {
                 .blockStartTime(LocalTime.of(10, 0))
                 .blockEndTime(LocalTime.of(12, 0))
                 .build();
-        given(timeTablePlaceBlockRepository.findByPlanIdOrderByDateAndStartTime(PLAN_ID)).willReturn(List.of(block));
+
+        givenSnapshot(plan,
+                List.of(TimetableDetailDto.from(timeTable)),
+                List.of(TimetablePlaceBlockDetailDto.from(block)));
 
         GetPlanResponse response = planService.getPlan(PLAN_ID);
 
@@ -382,8 +397,7 @@ class PlanServiceTest {
     void getCompletePlan_success_sharedTrue_anonymous() {
         Plan plan = sharedPlanStub(true);
         given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
-        given(timeTableRepository.findByPlanPlanIdOrderByDate(PLAN_ID)).willReturn(List.of());
-        given(timeTablePlaceBlockRepository.findByPlanIdOrderByDateAndStartTime(PLAN_ID)).willReturn(List.of());
+        givenSnapshot(plan, List.of(), List.of());
 
         GetCompletePlanResponse response = planService.getCompletePlan(null, PLAN_ID);
 
@@ -420,8 +434,7 @@ class PlanServiceTest {
         Plan plan = sharedPlanStub(false);
         given(planRepository.findById(PLAN_ID)).willReturn(Optional.of(plan));
         given(planAccessValidator.validateMember(PLAN_ID, USER_ID)).willReturn(true);
-        given(timeTableRepository.findByPlanPlanIdOrderByDate(PLAN_ID)).willReturn(List.of());
-        given(timeTablePlaceBlockRepository.findByPlanIdOrderByDateAndStartTime(PLAN_ID)).willReturn(List.of());
+        givenSnapshot(plan, List.of(), List.of());
 
         GetCompletePlanResponse response = planService.getCompletePlan(USER_ID, PLAN_ID);
 
