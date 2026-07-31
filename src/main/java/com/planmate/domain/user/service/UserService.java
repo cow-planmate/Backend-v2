@@ -5,6 +5,7 @@ import com.planmate.common.exception.domain.PreferredThemeCategoryMismatchExcept
 import com.planmate.common.exception.domain.ProfilePrivateException;
 import com.planmate.common.exception.domain.PreferredThemeNotFoundException;
 import com.planmate.common.exception.domain.UserNotFoundException;
+import com.planmate.common.internal.CommunityUserCacheEvictor;
 import com.planmate.common.storage.ProfileImageStorage;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
@@ -46,6 +47,7 @@ public class UserService {
     private final PlanMemberRepository planMemberRepository;
     private final ProfileImageStorage profileImageStorage;
     private final ProfileImageValidator profileImageValidator;
+    private final CommunityUserCacheEvictor communityUserCacheEvictor;
 
     @Transactional(readOnly = true)
     public PreferredThemeListResponse getPreferredThemes() {
@@ -164,6 +166,7 @@ public class UserService {
         user.changeProfileImageUrl(newUrl);
 
         profileImageStorage.delete(previousUrl);
+        communityUserCacheEvictor.evict(userId);
         return new ProfileImageResponse(newUrl);
     }
 
@@ -175,12 +178,14 @@ public class UserService {
         String previousUrl = user.getProfileImageUrl();
         user.changeProfileImageUrl(null);
         profileImageStorage.delete(previousUrl);
+        communityUserCacheEvictor.evict(userId);
     }
 
     @Transactional
     public void changeProfileVisibility(UUID userId, boolean profilePublic) {
         User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
         user.changeProfilePublic(profilePublic);
+        communityUserCacheEvictor.evict(userId);
     }
 
     @Transactional
@@ -194,6 +199,7 @@ public class UserService {
         }
 
         user.changeNickname(nickname);
+        communityUserCacheEvictor.evict(userId);
     }
 
     @Transactional

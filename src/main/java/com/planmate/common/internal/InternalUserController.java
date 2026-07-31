@@ -1,5 +1,6 @@
 package com.planmate.common.internal;
 
+import com.planmate.common.util.GravatarHash;
 import com.planmate.domain.user.repository.UserRepository;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +38,12 @@ public class InternalUserController {
         }
 
         List<InternalUserResponse> response = userRepository.findAllById(userIds).stream()
-                .map(u -> new InternalUserResponse(u.getUserId(), u.getNickname(), u.isProfilePublic()))
+                .map(u -> new InternalUserResponse(
+                        u.getUserId(),
+                        u.getNickname(),
+                        u.isProfilePublic(),
+                        u.getProfileImageUrl(),
+                        GravatarHash.of(u.getEmail())))
                 .toList();
 
         return ResponseEntity.ok(response);

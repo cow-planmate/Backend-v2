@@ -1,5 +1,6 @@
 package com.planmate.domain.user.service;
 
+import com.planmate.common.internal.CommunityUserCacheEvictor;
 import com.planmate.common.exception.domain.DuplicateNicknameException;
 import com.planmate.common.exception.domain.PreferredThemeCategoryMismatchException;
 import com.planmate.common.exception.domain.PreferredThemeNotFoundException;
@@ -56,6 +57,8 @@ class UserServiceTest {
     private UserPreferredThemeRepository userPreferredThemeRepository;
     @Mock
     private PlanMemberRepository planMemberRepository;
+    @Mock
+    private CommunityUserCacheEvictor communityUserCacheEvictor;
 
     @InjectMocks
     private UserService userService;
