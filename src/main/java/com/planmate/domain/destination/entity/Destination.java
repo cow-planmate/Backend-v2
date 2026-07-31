@@ -30,9 +30,9 @@ public class Destination {
     @Column(name = "destination_name", nullable = false, unique = true, length = 100)
     private String destinationName;
 
-    @Column(precision = 10, scale = 8)
+    @Column(nullable = false, precision = 10, scale = 8)
     private BigDecimal latitude;
 
-    @Column(precision = 11, scale = 8)
+    @Column(nullable = false, precision = 11, scale = 8)
     private BigDecimal longitude;
 }
