@@ -20,6 +20,7 @@ public final class SecurityWhitelist {
             "/api/plan/*/complete",
             "/api/destination",
             "/api/place",
+            "/api/weather",
             "/api/beta/feedback",
             "/actuator/health",
             // 내부 서비스 전용 API — 인증은 InternalTokenFilter가 별도로 처리한다

@@ -42,6 +42,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -258,6 +259,8 @@ class UserControllerTest {
 
         Destination destination = destinationRepository.save(Destination.builder()
                 .destinationName("destination-" + UUID.randomUUID())
+                .latitude(new BigDecimal("37.56330000"))
+                .longitude(new BigDecimal("126.97970000"))
                 .build());
         Plan ownedPlan = planRepository.save(Plan.builder()
                 .planName("제주도 여행")
@@ -301,6 +304,8 @@ class UserControllerTest {
 
         Destination destination = destinationRepository.save(Destination.builder()
                 .destinationName("destination-" + UUID.randomUUID())
+                .latitude(new BigDecimal("37.56330000"))
+                .longitude(new BigDecimal("126.97970000"))
                 .build());
         Plan sharedPlan = planRepository.save(Plan.builder()
                 .planName("부산 여행")
@@ -576,6 +581,8 @@ class UserControllerTest {
     private Plan createPlanOwnedBy(User owner) {
         Destination destination = destinationRepository.save(Destination.builder()
                 .destinationName("destination-" + UUID.randomUUID())
+                .latitude(new BigDecimal("37.56330000"))
+                .longitude(new BigDecimal("126.97970000"))
                 .build());
         return planRepository.save(Plan.builder()
                 .planName("부산 여행")
@@ -893,6 +900,8 @@ class UserControllerTest {
     void resignAccount_success_ownedPlanRemainsIntact() throws Exception {
         Destination destination = destinationRepository.save(Destination.builder()
                 .destinationName("destination-" + UUID.randomUUID())
+                .latitude(new BigDecimal("37.56330000"))
+                .longitude(new BigDecimal("126.97970000"))
                 .build());
         Plan ownedPlan = planRepository.save(Plan.builder()
                 .planName("탈퇴 테스트 플랜")

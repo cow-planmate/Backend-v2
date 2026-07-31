@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -54,6 +55,8 @@ class UserSoftDeleteSqlRestrictionTest {
 
         Destination destination = destinationRepository.save(Destination.builder()
                 .destinationName("dest-" + UUID.randomUUID())
+                .latitude(new BigDecimal("37.56330000"))
+                .longitude(new BigDecimal("126.97970000"))
                 .build());
         Plan plan = planRepository.save(Plan.builder()
                 .planName("test plan")
