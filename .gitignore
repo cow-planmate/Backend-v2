@@ -48,6 +48,7 @@ bin/
 
 # Secrets
 src/main/resources/application-secret.yml
+.env
 
 # Logs
 logs/
