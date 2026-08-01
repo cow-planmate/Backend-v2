@@ -9,6 +9,7 @@ import com.planmate.domain.user.enums.Gender;
 import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.enums.UserRole;
 import com.planmate.domain.user.repository.UserRepository;
+import com.planmate.security.JwtSigningKeys;
 import com.planmate.security.JwtTokenProvider;
 import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.DisplayName;
@@ -45,6 +46,9 @@ class RegisterControllerTest {
     private UserRepository userRepository;
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    @Autowired
+    private JwtSigningKeys jwtSigningKeys;
 
     @Test
     @DisplayName("회원가입 성공 - 201, User 실제 저장 확인")
@@ -118,7 +122,8 @@ class RegisterControllerTest {
     @Test
     @DisplayName("회원가입 실패 - signupToken이 실제로 만료되면 401, AUTH_002(설계문서는 AUTH_001로 뭉뚱그려놨지만 실제 코드는 별도 응답)")
     void register_fail_expiredSignupToken_realToken() throws Exception {
-        SecretKey key = (SecretKey) ReflectionTestUtils.getField(jwtTokenProvider, "key");
+        // 서명 키는 JwtSigningKeys 가 들고 있다(HS256 대칭키 ↔ RS256 개인키 전환 때문).
+        SecretKey key = (SecretKey) ReflectionTestUtils.getField(jwtSigningKeys, "hmacKey");
         String expiredToken = Jwts.builder()
                 .subject("expired-" + UUID.randomUUID() + "@example.com")
                 .claim("purpose", EmailVerificationPurpose.SIGN_UP.name())
