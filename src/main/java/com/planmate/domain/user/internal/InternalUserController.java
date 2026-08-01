@@ -1,4 +1,4 @@
-package com.planmate.common.internal;
+package com.planmate.domain.user.internal;
 
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;

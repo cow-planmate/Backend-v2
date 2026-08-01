@@ -2,10 +2,9 @@ package com.planmate.domain.user.service;
 
 import com.planmate.common.exception.domain.DuplicateNicknameException;
 import com.planmate.common.exception.domain.PreferredThemeCategoryMismatchException;
-import com.planmate.common.exception.domain.ProfilePrivateException;
 import com.planmate.common.exception.domain.PreferredThemeNotFoundException;
+import com.planmate.common.exception.domain.ProfilePrivateException;
 import com.planmate.common.exception.domain.UserNotFoundException;
-import com.planmate.common.internal.UserChangeNotifier;
 import com.planmate.common.storage.ProfileImageStorage;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
@@ -24,18 +23,20 @@ import com.planmate.domain.user.dto.UserProfileResponse;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.Gender;
 import com.planmate.domain.user.enums.UserProvider;
+import com.planmate.domain.user.event.UserProfileChangedEvent;
 import com.planmate.domain.user.repository.UserRepository;
 import com.planmate.domain.user.validator.ProfileImageValidator;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
 
 @Service
 @RequiredArgsConstructor
@@ -47,7 +48,7 @@ public class UserService {
     private final PlanMemberRepository planMemberRepository;
     private final ProfileImageStorage profileImageStorage;
     private final ProfileImageValidator profileImageValidator;
-    private final UserChangeNotifier userChangeNotifier;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
     public PreferredThemeListResponse getPreferredThemes() {
@@ -166,7 +167,7 @@ public class UserService {
         user.changeProfileImageUrl(newUrl);
 
         profileImageStorage.delete(previousUrl);
-        userChangeNotifier.notifyChanged(userId);
+        eventPublisher.publishEvent(new UserProfileChangedEvent(userId));
         return new ProfileImageResponse(newUrl);
     }
 
@@ -178,14 +179,14 @@ public class UserService {
         String previousUrl = user.getProfileImageUrl();
         user.changeProfileImageUrl(null);
         profileImageStorage.delete(previousUrl);
-        userChangeNotifier.notifyChanged(userId);
+        eventPublisher.publishEvent(new UserProfileChangedEvent(userId));
     }
 
     @Transactional
     public void changeProfileVisibility(UUID userId, boolean profilePublic) {
         User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
         user.changeProfilePublic(profilePublic);
-        userChangeNotifier.notifyChanged(userId);
+        eventPublisher.publishEvent(new UserProfileChangedEvent(userId));
     }
 
     @Transactional
@@ -199,7 +200,7 @@ public class UserService {
         }
 
         user.changeNickname(nickname);
-        userChangeNotifier.notifyChanged(userId);
+        eventPublisher.publishEvent(new UserProfileChangedEvent(userId));
     }
 
     @Transactional

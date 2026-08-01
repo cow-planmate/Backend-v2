@@ -1,4 +1,4 @@
-package com.planmate.common.internal.grpc;
+package com.planmate.domain.user.internal.grpc;
 
 import build.buf.gen.planmate.internal.v1.GetUsersRequest;
 import build.buf.gen.planmate.internal.v1.GetUsersResponse;
@@ -6,8 +6,9 @@ import build.buf.gen.planmate.internal.v1.InternalUser;
 import build.buf.gen.planmate.internal.v1.InternalUserServiceGrpc;
 import build.buf.gen.planmate.internal.v1.WatchUserChangesRequest;
 import build.buf.gen.planmate.internal.v1.WatchUserChangesResponse;
-import com.planmate.common.internal.InternalUserQueryService;
-import com.planmate.common.internal.InternalUserResponse;
+import com.planmate.common.internal.grpc.InternalTokenServerInterceptor;
+import com.planmate.domain.user.internal.InternalUserQueryService;
+import com.planmate.domain.user.internal.InternalUserResponse;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.Server;
@@ -47,13 +48,15 @@ class InternalUserGrpcServiceTest {
     @Mock
     private InternalUserQueryService queryService;
 
+    private UserChangeStreamRegistry streamRegistry;
     private InternalUserGrpcService service;
     private Server server;
     private ManagedChannel channel;
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new InternalUserGrpcService(queryService);
+        streamRegistry = new UserChangeStreamRegistry();
+        service = new InternalUserGrpcService(queryService, streamRegistry);
 
         InternalTokenServerInterceptor interceptor = new InternalTokenServerInterceptor();
         ReflectionTestUtils.setField(interceptor, "internalApiToken", TOKEN);
@@ -195,7 +198,7 @@ class InternalUserGrpcServiceTest {
                             }
                         });
 
-        service.publish(userId);
+        streamRegistry.broadcast(userId);
 
         WatchUserChangesResponse event = received.poll(2, TimeUnit.SECONDS);
         assertThat(event).isNotNull();
@@ -227,23 +230,22 @@ class InternalUserGrpcServiceTest {
                     }
                 });
 
-        service.publish(UUID.randomUUID());
+        streamRegistry.broadcast(UUID.randomUUID());
         assertThat(subscribed.await(2, TimeUnit.SECONDS)).isTrue();
-        assertThat(watchers()).hasSize(1);
+        assertThat(watcherCount()).isEqualTo(1);
 
         channel.shutdownNow();
         channel.awaitTermination(2, TimeUnit.SECONDS);
 
         // 취소가 서버에 전파되면 옵저버가 해제된다
-        for (int i = 0; i < 50 && !watchers().isEmpty(); i++) {
-            service.publish(UUID.randomUUID());
+        for (int i = 0; i < 50 && watcherCount() > 0; i++) {
+            streamRegistry.broadcast(UUID.randomUUID());
             Thread.sleep(20);
         }
-        assertThat(watchers()).isEmpty();
+        assertThat(watcherCount()).isZero();
     }
 
-    @SuppressWarnings("unchecked")
-    private java.util.Set<Object> watchers() {
-        return (java.util.Set<Object>) ReflectionTestUtils.getField(service, "watchers");
+    private int watcherCount() {
+        return streamRegistry.size();
     }
 }

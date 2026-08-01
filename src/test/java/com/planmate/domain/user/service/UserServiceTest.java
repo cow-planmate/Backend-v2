@@ -1,6 +1,5 @@
 package com.planmate.domain.user.service;
 
-import com.planmate.common.internal.UserChangeNotifier;
 import com.planmate.common.exception.domain.DuplicateNicknameException;
 import com.planmate.common.exception.domain.PreferredThemeCategoryMismatchException;
 import com.planmate.common.exception.domain.PreferredThemeNotFoundException;
@@ -19,7 +18,13 @@ import com.planmate.domain.user.dto.UserProfileResponse;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.Gender;
 import com.planmate.domain.user.enums.UserProvider;
+import com.planmate.domain.user.event.UserProfileChangedEvent;
 import com.planmate.domain.user.repository.UserRepository;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,12 +32,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -58,7 +59,7 @@ class UserServiceTest {
     @Mock
     private PlanMemberRepository planMemberRepository;
     @Mock
-    private UserChangeNotifier userChangeNotifier;
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private UserService userService;
@@ -232,6 +233,9 @@ class UserServiceTest {
         userService.changeNickname(USER_ID, "newNickname");
 
         verify(user).changeNickname("newNickname");
+        // 이 이벤트가 커뮤니티 캐시 무효화의 유일한 출발점이다 — 빠뜨리면 남의 피드에
+        // 최대 10분간 옛 닉네임이 남고, 아무 데서도 에러가 나지 않아 조용히 썩는다.
+        verify(eventPublisher).publishEvent(new UserProfileChangedEvent(USER_ID));
     }
 
     @Test
@@ -268,6 +272,20 @@ class UserServiceTest {
                 .isInstanceOf(DuplicateNicknameException.class);
 
         verify(user, never()).changeNickname(anyString());
+        verify(eventPublisher, never()).publishEvent(any(UserProfileChangedEvent.class));
+    }
+
+    @Test
+    @DisplayName("changeProfileVisibility 성공 - 공개 여부 변경도 커뮤니티에 알린다")
+    void changeProfileVisibility_publishesEvent() {
+        User user = mock(User.class);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        userService.changeProfileVisibility(USER_ID, false);
+
+        verify(user).changeProfilePublic(false);
+        // 공개 설정을 껐는데 커뮤니티가 모르면 비공개 프로필이 계속 노출된다
+        verify(eventPublisher).publishEvent(new UserProfileChangedEvent(USER_ID));
     }
 
     @Test

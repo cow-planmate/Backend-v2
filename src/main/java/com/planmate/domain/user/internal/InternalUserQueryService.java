@@ -1,4 +1,4 @@
-package com.planmate.common.internal;
+package com.planmate.domain.user.internal;
 
 import com.planmate.common.util.GravatarHash;
 import com.planmate.domain.user.repository.UserRepository;
