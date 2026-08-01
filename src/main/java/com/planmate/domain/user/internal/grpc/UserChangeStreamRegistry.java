@@ -17,6 +17,12 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * 둘, 발행 쪽(UserProfileChangedListener)이 gRPC 서비스 빈에 직접 의존하지 않게 된다 —
  * 그 빈에 @Async/@Transactional 이 붙어 프록시로 감싸이면 net.devh 의 서비스 등록이
  * 어긋날 수 있어서 애초에 건드리지 않는 편이 낫다.
+ *
+ * <b>이 서비스가 한 인스턴스로 뜬다는 전제에 기대고 있다.</b> 구독자 목록이 JVM 안에만
+ * 있어서, 여러 대로 늘리면 A 인스턴스에서 일어난 변경은 A 에 붙은 구독자에게만 간다.
+ * B 에 붙어 있는 소비자는 무효화를 <b>영영 못 받고</b> 예외도 로그도 남지 않는다 —
+ * 캐시 TTL 로만 수렴하므로 "가끔 프로필이 늦게 바뀐다"로 보일 뿐 원인을 찾기 어렵다.
+ * 스케일아웃 하려면 인스턴스 간 전파(pub/sub 등)를 먼저 넣어야 한다.
  */
 @Slf4j
 @Component

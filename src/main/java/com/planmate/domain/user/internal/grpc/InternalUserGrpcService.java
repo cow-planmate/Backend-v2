@@ -69,7 +69,7 @@ public class InternalUserGrpcService extends InternalUserServiceGrpc.InternalUse
 
     /**
      * proto3에는 null이 없으므로 미등록 값은 빈 문자열로 내려간다.
-     * 수신측(Community)이 빈 문자열을 다시 null로 되돌린다.
+     * "없음"을 null로 표현하는 소비자는 수신측에서 되돌려야 한다.
      */
     private InternalUser toProto(InternalUserResponse user) {
         InternalUser.Builder builder = InternalUser.newBuilder()
