@@ -67,6 +67,17 @@ minio:
 internal:
   api-token: ${INTERNAL_API_TOKEN:local-internal-token}
 
+# 내부 서비스 간 gRPC. HTTP 포트(server.port)와 별개이며 외부에 노출하지 않는다 —
+# 컨테이너 간 통신만 하므로 nginx 라우팅 대상이 아니다.
+grpc:
+  server:
+    port: ${GRPC_SERVER_PORT:9090}
+    # 커뮤니티가 WatchUserChanges 스트림을 몇 시간씩 열어두고 keepalive 핑으로
+    # 끊김을 감지한다. 기본 허용치(5분)는 클라이언트 핑 주기와 정확히 같아, 지터로
+    # 조금만 일찍 도착해도 서버가 ENHANCE_YOUR_CALM GOAWAY 로 연결을 끊는다.
+    # 여유를 명시해 keepalive 계약을 양쪽 기본값 일치에 기대지 않게 한다.
+    permit-keep-alive-time: 1m
+
 api:
   odsay:
     key: ${ODSAY_API_KEY:}
@@ -79,6 +90,12 @@ firebase:
   service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
 
 jwt:
+  # RS256 서명용 PKCS#8 개인키(PEM). 이 서비스만 갖는다 — 커뮤니티는 JWKS 로 공개키만 받는다.
+  # 비어 있으면 예전처럼 HS256(대칭키)으로 발급한다. 코드 배포와 키 투입을 분리하기 위한 것이며,
+  # 그 상태에서는 기동 로그에 경고가 남는다. 키 생성은 deploy/gen-jwt-key.sh 참고.
+  private-key: ${JWT_PRIVATE_KEY:}
+  # 전환 기간 동안 배포 전에 발급된 HS256 토큰을 검증하는 데 계속 쓰인다.
+  # refresh 토큰이 7일짜리라 그만큼 지나야 제거할 수 있다.
   secret: ${JWT_SECRET}
   access-token-expiry-seconds: ${JWT_ACCESS_EXPIRY:900}
   refresh-token-expiry-seconds: ${JWT_REFRESH_EXPIRY:604800}

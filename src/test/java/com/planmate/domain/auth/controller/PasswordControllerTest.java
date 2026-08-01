@@ -9,6 +9,7 @@ import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.enums.UserRole;
 import com.planmate.domain.user.repository.UserRepository;
+import com.planmate.security.JwtSigningKeys;
 import com.planmate.security.JwtTokenProvider;
 import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,6 +52,9 @@ class PasswordControllerTest {
     private PasswordEncoder passwordEncoder;
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    @Autowired
+    private JwtSigningKeys jwtSigningKeys;
 
     private User testUser;
     private String accessToken;
@@ -165,7 +169,8 @@ class PasswordControllerTest {
     @Test
     @DisplayName("임시 비밀번호 발송 실패 - verificationToken이 실제로 만료되면 401, AUTH_002(무효 토큰과 다른 코드)")
     void sendTempPassword_fail_expiredToken() throws Exception {
-        SecretKey key = (SecretKey) ReflectionTestUtils.getField(jwtTokenProvider, "key");
+        // 서명 키는 JwtSigningKeys 가 들고 있다(HS256 대칭키 ↔ RS256 개인키 전환 때문).
+        SecretKey key = (SecretKey) ReflectionTestUtils.getField(jwtSigningKeys, "hmacKey");
         String expiredToken = Jwts.builder()
                 .subject(testUser.getEmail())
                 .claim("purpose", EmailVerificationPurpose.RESET_PASSWORD.name())

@@ -7,6 +7,16 @@ plugins {
 group = 'com.planmate'
 version = '0.0.1-SNAPSHOT'
 def sharedSyncVersion = '5b3245b214'
+// buf.build/planmate/proto 의 모듈 커밋. **Community 와 반드시 같은 값이어야 한다.**
+def protoCommit = '20260801140641.955182b73530'
+// BSR 생성 SDK 버전은 <생성 플러그인 버전>.1.<모듈 커밋> 형태라 아티팩트마다 접두사가 다르다.
+// 값은 추측하지 말고 BSR 모듈의 Generated SDKs 탭에서 확인할 것.
+def protobufSdkVersion = "35.1.0.1.$protoCommit"
+def grpcSdkVersion = "1.83.1.1.$protoCommit"
+def grpcStarterVersion = '3.1.0.RELEASE'
+// 생성 SDK 가 요구하는 grpc-java 버전. net.devh 스타터는 grpc-core/netty-shaded 를 훨씬
+// 낮은 버전으로 끌어오므로 섞이면 io.grpc 아티팩트 버전이 어긋난다 — BOM 으로 전부 정렬한다.
+def grpcVersion = '1.83.1'
 
 java {
     toolchain {
@@ -18,9 +28,21 @@ repositories {
     mavenCentral()
     mavenLocal()
     maven { url 'https://jitpack.io' }
+    // BSR Generated SDK (proto)
+    maven { url 'https://buf.build/gen/maven' }
 }
 
 dependencies {
+    // ── 서비스 간 gRPC 계약 (proto / BSR) ──
+    implementation platform("io.grpc:grpc-bom:$grpcVersion")
+
+    implementation "build.buf.gen:planmate_proto_protocolbuffers_java:$protobufSdkVersion"
+    implementation "build.buf.gen:planmate_proto_grpc_java:$grpcSdkVersion"
+
+    // gRPC 서버. spring-grpc 1.0+ 는 Spring Boot 4 를 요구하므로 Boot 3.5 인 이 프로젝트는
+    // net.devh 스타터를 쓴다 (Boot 4 로 올릴 때 spring-grpc 로 갈아탈 것).
+    implementation "net.devh:grpc-server-spring-boot-starter:$grpcStarterVersion"
+
     // SharedSync Framework (WebSocket 실시간 협업편집)
     if (project.hasProperty('useLocalSharedSync') && project.useLocalSharedSync == 'true') {
         implementation 'com.sharedsync:sharedsync-starter:1.1.26'
@@ -79,6 +101,9 @@ dependencies {
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
+    // gRPC 서비스는 in-process 서버로 테스트한다 (실제 포트 바인딩 불필요)
+    testImplementation 'io.grpc:grpc-inprocess'
+    testImplementation 'io.grpc:grpc-testing'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
