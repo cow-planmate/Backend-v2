@@ -89,7 +89,7 @@ class InternalUserGrpcServiceTest {
     void getUsers_returnsUsers() {
         UUID userId = UUID.randomUUID();
         given(queryService.findUsers(anyList())).willReturn(List.of(
-                new InternalUserResponse(userId, "홍길동", true, "https://img/1.png", "abc123")));
+                new InternalUserResponse(userId, "홍길동", true, "https://img/1.png", "abc123", false)));
 
         GetUsersResponse response = authedStub().getUsers(
                 GetUsersRequest.newBuilder().addUserIds(userId.toString()).build());
@@ -108,7 +108,7 @@ class InternalUserGrpcServiceTest {
     void getUsers_mapsNullToEmptyString() {
         UUID userId = UUID.randomUUID();
         given(queryService.findUsers(anyList())).willReturn(List.of(
-                new InternalUserResponse(userId, "익명", false, null, null)));
+                new InternalUserResponse(userId, "익명", false, null, null, false)));
 
         InternalUser user = authedStub().getUsers(
                 GetUsersRequest.newBuilder().addUserIds(userId.toString()).build()).getUsers(0);

@@ -27,6 +27,10 @@ public class InternalUserQueryService {
      * 존재하지 않는 ID는 결과에서 그냥 빠진다(예외 아님).
      * 호출부는 게시글에 저장된 닉네임 스냅샷으로 fallback 한다.
      *
+     * 탈퇴 계정은 <b>빠지지 않고</b> deleted=true로 내려간다 — "응답에 없음"은 조회 실패를 뜻하므로
+     * 탈퇴를 같은 방식으로 표현하면 호출부가 둘을 구분하지 못한다(user_service.proto 참고).
+     * 대신 닉네임·프로필 사진·Gravatar 해시는 담지 않는다.
+     *
      * @throws IllegalArgumentException UUID 형식이 아닌 값이 섞여 있을 때
      */
     @Transactional(readOnly = true)
@@ -35,13 +39,16 @@ public class InternalUserQueryService {
             return List.of();
         }
 
-        return userRepository.findAllById(userIds).stream()
-                .map(u -> new InternalUserResponse(
-                        u.getUserId(),
-                        u.getNickname(),
-                        u.isProfilePublic(),
-                        u.getProfileImageUrl(),
-                        GravatarHash.of(u.getEmail())))
+        return userRepository.findAllByIdIncludingDeleted(userIds).stream()
+                .map(u -> u.isDeleted()
+                        ? InternalUserResponse.ofDeleted(u.getUserId())
+                        : new InternalUserResponse(
+                                u.getUserId(),
+                                u.getNickname(),
+                                u.isProfilePublic(),
+                                u.getProfileImageUrl(),
+                                GravatarHash.of(u.getEmail()),
+                                false))
                 .toList();
     }
 

@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,4 +58,13 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     // 활용 인덱스: uk_users_email ON (LOWER(email)) WHERE deleted_at IS NULL
     @Query("SELECT u FROM User u WHERE LOWER(u.email) = LOWER(:email)")
     Optional<User> findByEmailIgnoreCase(@Param("email") String email);
+
+    // 내부 사용자 조회 — 탈퇴 계정 포함 (InternalUserQueryService)
+    // nativeQuery = true → @SQLRestriction 미적용
+    //
+    // 커뮤니티가 탈퇴를 "응답에 없음"이 아니라 deleted 플래그로 받아야 하기 때문이다.
+    // 탈퇴 계정을 빼버리면 조회 실패(백엔드 장애)와 구분되지 않아, 장애 때마다 멀쩡한 사용자가
+    // 탈퇴한 것처럼 보인다. 노출 필드는 InternalUserQueryService가 탈퇴 여부에 따라 걸러낸다.
+    @Query(value = "SELECT * FROM users WHERE user_id IN (:userIds)", nativeQuery = true)
+    List<User> findAllByIdIncludingDeleted(@Param("userIds") Collection<UUID> userIds);
 }

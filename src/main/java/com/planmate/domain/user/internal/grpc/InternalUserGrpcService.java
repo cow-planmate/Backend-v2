@@ -74,9 +74,13 @@ public class InternalUserGrpcService extends InternalUserServiceGrpc.InternalUse
     private InternalUser toProto(InternalUserResponse user) {
         InternalUser.Builder builder = InternalUser.newBuilder()
                 .setUserId(user.userId().toString())
-                .setNickname(user.nickname())
-                .setProfilePublic(user.profilePublic());
+                .setProfilePublic(user.profilePublic())
+                .setDeleted(user.deleted());
 
+        // 탈퇴 계정은 세 필드가 모두 null이라 그대로 빈 문자열로 나간다
+        if (user.nickname() != null) {
+            builder.setNickname(user.nickname());
+        }
         if (user.profileImageUrl() != null) {
             builder.setProfileImageUrl(user.profileImageUrl());
         }
