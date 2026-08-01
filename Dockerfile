@@ -27,6 +27,7 @@ COPY --from=build /app/build/libs/*.jar app.jar
 RUN chown app:app app.jar
 USER app
 
-EXPOSE 8080
+# 8080: 외부 HTTP API / 9090: 내부 서비스 간 gRPC (외부 노출 안 함)
+EXPOSE 8080 9090
 ENV JAVA_OPTS="-Xmx256m -Xms64m -XX:+UseSerialGC -Duser.timezone=Asia/Seoul"
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

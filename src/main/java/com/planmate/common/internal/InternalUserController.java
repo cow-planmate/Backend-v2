@@ -1,7 +1,5 @@
 package com.planmate.common.internal;
 
-import com.planmate.common.util.GravatarHash;
-import com.planmate.domain.user.repository.UserRepository;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -10,42 +8,32 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * 내부 사용자 조회 HTTP 엔드포인트.
+ *
+ * gRPC(InternalUserGrpcService)로 이관 중이며, 전환이 운영에서 검증될 때까지
+ * 롤백 경로로 남겨둔다. 조회 로직은 InternalUserQueryService를 공유한다.
+ */
 @Hidden
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/api/internal")
 public class InternalUserController {
 
-    private final UserRepository userRepository;
+    private final InternalUserQueryService queryService;
 
     @GetMapping("/users")
     public ResponseEntity<List<InternalUserResponse>> getUsers(@RequestParam("ids") String ids) {
-        if (ids == null || ids.isBlank()) {
-            return ResponseEntity.badRequest().build();
-        }
-
-        List<UUID> userIds = new ArrayList<>();
+        List<UUID> userIds;
         try {
-            for (String id : ids.split(",")) {
-                userIds.add(UUID.fromString(id.trim()));
-            }
+            userIds = queryService.parseIds(ids);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
 
-        List<InternalUserResponse> response = userRepository.findAllById(userIds).stream()
-                .map(u -> new InternalUserResponse(
-                        u.getUserId(),
-                        u.getNickname(),
-                        u.isProfilePublic(),
-                        u.getProfileImageUrl(),
-                        GravatarHash.of(u.getEmail())))
-                .toList();
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(queryService.findUsers(userIds));
     }
 }

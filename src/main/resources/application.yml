@@ -67,6 +67,12 @@ minio:
 internal:
   api-token: ${INTERNAL_API_TOKEN:local-internal-token}
 
+# 내부 서비스 간 gRPC. HTTP 포트(server.port)와 별개이며 외부에 노출하지 않는다 —
+# 컨테이너 간 통신만 하므로 nginx 라우팅 대상이 아니다.
+grpc:
+  server:
+    port: ${GRPC_SERVER_PORT:9090}
+
 api:
   odsay:
     key: ${ODSAY_API_KEY:}
