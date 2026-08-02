@@ -34,7 +34,7 @@ import java.util.UUID;
 @SQLRestriction("deleted_at IS NULL")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-@Builder
+@Builder(toBuilder = true)
 @CacheEntity
 @PresenceRoot(channel = "plan-presence", idField = "planId")
 public class Plan extends BaseSoftDeleteEntity {

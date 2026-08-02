@@ -41,6 +41,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import sharedsync.cache.PlanCache;
+import sharedsync.dto.PlanDto;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -66,6 +68,7 @@ public class PlanService {
     private final TimeTablePlaceBlockRepository timeTablePlaceBlockRepository;
     private final PlanAccessValidator planAccessValidator;
     private final PlanSnapshotReader planSnapshotReader;
+    private final PlanCache planCache;
 
     @Transactional
     public CreatePlanFrameResponse createPlanFrame(UUID userId, CreatePlanFrameRequest request) {
@@ -212,6 +215,11 @@ public class PlanService {
         Plan plan = planRepository.findById(planId)
                 .orElseThrow(PlanNotFoundException::new);
         plan.rename(planName);
+
+        // 이 플랜이 SharedSync 캐시에 떠 있으면(=실시간 편집 세션이 열려 있으면) 캐시도 같이 갱신한다.
+        // 안 그러면 편집 세션의 stale 캐시가 나중에 주기 동기화로 flush될 때 이 이름 변경이 되돌아간다.
+        planCache.findById(planId).ifPresent(cachedPlan ->
+                planCache.save(PlanDto.fromEntity(cachedPlan.toBuilder().planName(planName).build())));
     }
 
     @PreAuthorize("@planAccessValidator.validateMember(#planId, authentication.principal)")
