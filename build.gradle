@@ -8,7 +8,7 @@ group = 'com.planmate'
 version = '0.0.1-SNAPSHOT'
 def sharedSyncVersion = '5b3245b214'
 // buf.build/planmate/proto 의 모듈 커밋. **Community 와 반드시 같은 값이어야 한다.**
-def protoCommit = '20260801140641.955182b73530'
+def protoCommit = '20260802133042.28c8c830142c'
 // BSR 생성 SDK 버전은 <생성 플러그인 버전>.1.<모듈 커밋> 형태라 아티팩트마다 접두사가 다르다.
 // 값은 추측하지 말고 BSR 모듈의 Generated SDKs 탭에서 확인할 것.
 def protobufSdkVersion = "35.1.0.1.$protoCommit"
@@ -104,11 +104,25 @@ dependencies {
     // gRPC 서비스는 in-process 서버로 테스트한다 (실제 포트 바인딩 불필요)
     testImplementation 'io.grpc:grpc-inprocess'
     testImplementation 'io.grpc:grpc-testing'
+
+    // 실제 PostgreSQL. outbox 시퀀스가 커밋 순서와 일치하는지는 두 트랜잭션을 실제로 겹쳐야만
+    // 확인할 수 있다 — 목이나 H2 로는 nextval 시점과 가시성 시점의 차이가 재현되지 않는다.
+    testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'org.testcontainers:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+
+    // Testcontainers 가 Docker 데몬에 붙게 만드는 설정. docker-java 는 API 버전을 명시하지
+    // 않으면 1.32 로 요청하는데 Docker 25+ 데몬은 최소 1.44 를 요구해 400 으로 거부한다.
+    // 실제로 먹히는 건 systemProperty 'api.version' 이다 — 환경변수 DOCKER_API_VERSION 은
+    // docker-java 의 설정 키에 매핑되지 않는다. DOCKER_HOST 는 환경변수 기반 전략이 먼저
+    // 선택되게 해 설정 경로를 일정하게 만든다. (Gradle 테스트 워커는 쉘 환경을 그대로
+    // 물려받지 않으므로 여기서 명시적으로 넘긴다.)
+    environment 'DOCKER_HOST', System.getenv('DOCKER_HOST') ?: 'unix:///var/run/docker.sock'
+    systemProperty 'api.version', System.getenv('DOCKER_API_VERSION') ?: '1.44'
     // JDK 17+ self-attach 제한 때문에 Mockito 5 inline mock maker(byte-buddy-agent) 초기화가
     // 실패하는 걸 막기 위한 플래그(IDE는 자동으로 붙여주지만 Gradle CLI는 명시가 필요)
     jvmArgs += ['-Djdk.attach.allowAttachSelf=true']

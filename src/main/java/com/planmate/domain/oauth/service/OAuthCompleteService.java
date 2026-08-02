@@ -12,6 +12,7 @@ import com.planmate.domain.oauth.dto.OAuthSignupCache;
 import com.planmate.domain.oauth.repository.OAuthSignupRedisRepository;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.UserRole;
+import com.planmate.domain.user.internal.outbox.UserOutboxWriter;
 import com.planmate.domain.user.repository.UserRepository;
 import com.planmate.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class OAuthCompleteService {
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenRedisRepository refreshTokenRedisRepository;
+    private final UserOutboxWriter userOutboxWriter;
 
     @Transactional
     public LoginResponse complete(OAuthCompleteRequest request) {
@@ -64,6 +66,8 @@ public class OAuthCompleteService {
                 .build();
 
         userRepository.save(user);
+        // 소셜 가입도 outbox에 남긴다 — RegisterService.register 와 같은 이유.
+        userOutboxWriter.publish(user);
         oAuthSignupRedisRepository.delete(request.signupId());
 
         String accessToken = jwtTokenProvider.createAccessToken(user.getUserId(), user.getRole().name());

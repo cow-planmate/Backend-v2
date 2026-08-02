@@ -67,4 +67,19 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     // 탈퇴한 것처럼 보인다. 노출 필드는 InternalUserQueryService가 탈퇴 여부에 따라 걸러낸다.
     @Query(value = "SELECT * FROM users WHERE user_id IN (:userIds)", nativeQuery = true)
     List<User> findAllByIdIncludingDeleted(@Param("userIds") Collection<UUID> userIds);
+
+    // 커뮤니티 읽기 모델 최초 백필용 스냅샷 — 탈퇴 계정 포함, user_id 오름차순 키셋 페이징.
+    // nativeQuery = true 이유는 위와 같다(@SQLRestriction 우회).
+    //
+    // OFFSET 이 아니라 커서(user_id > ?)를 쓰는 이유: 스냅샷을 보내는 동안에도 users 에
+    // INSERT 가 들어오므로 OFFSET 은 행을 건너뛰거나 중복시킨다. user_id 는 UUIDv7 이라
+    // 정렬이 안정적이고, 중복 전송은 어차피 멱등 업서트가 흡수한다.
+    @Query(value = """
+            SELECT * FROM users
+             WHERE user_id > :afterUserId
+             ORDER BY user_id
+             LIMIT :limit
+            """, nativeQuery = true)
+    List<User> findSnapshotPageIncludingDeleted(@Param("afterUserId") UUID afterUserId,
+                                                @Param("limit") int limit);
 }

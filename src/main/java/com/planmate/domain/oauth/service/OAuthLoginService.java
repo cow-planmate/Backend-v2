@@ -13,6 +13,7 @@ import com.planmate.domain.oauth.enums.OAuthProvider;
 import com.planmate.domain.oauth.repository.OAuthLoginCodeRedisRepository;
 import com.planmate.domain.oauth.repository.OAuthSignupRedisRepository;
 import com.planmate.domain.user.entity.User;
+import com.planmate.domain.user.internal.outbox.UserOutboxWriter;
 import com.planmate.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpEntity;
@@ -37,6 +38,7 @@ public class OAuthLoginService {
     private final UserRepository userRepository;
     private final OAuthLoginCodeRedisRepository oAuthLoginCodeRedisRepository;
     private final OAuthSignupRedisRepository oAuthSignupRedisRepository;
+    private final UserOutboxWriter userOutboxWriter;
     private final RestTemplate restTemplate;
 
     /** 1. 로그인 시작 URL 생성 — state는 Controller가 만든 값을 그대로 받아 쿼리파라미터에 끼워넣기만 함(NAVER 외엔 무시) */
@@ -99,6 +101,10 @@ public class OAuthLoginService {
                 String reconfirmedNickname = resolveUniqueNickname(user.getNickname());
                 user.restore();
                 user.changeNickname(reconfirmedNickname);
+                // 재활성화는 지금까지 아무 알림도 내보내지 않았다 — 탈퇴 상태로 복제돼 있던
+                // 사용자가 살아나고 닉네임까지 바뀌는데 커뮤니티는 모른다. 페이로드가 전체
+                // 스냅샷이라 restore + changeNickname 을 한 행으로 덮으면 된다.
+                userOutboxWriter.publish(user);
             }
 
             String loginCode = oAuthLoginCodeRedisRepository.issue(user.getUserId());
