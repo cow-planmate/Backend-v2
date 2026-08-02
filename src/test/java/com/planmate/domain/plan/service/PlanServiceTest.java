@@ -47,6 +47,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import sharedsync.cache.PlanCache;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -88,6 +89,8 @@ class PlanServiceTest {
     private PlanAccessValidator planAccessValidator;
     @Mock
     private PlanSnapshotReader planSnapshotReader;
+    @Mock
+    private PlanCache planCache;
 
     @InjectMocks
     private PlanService planService;

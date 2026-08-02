@@ -8,6 +8,7 @@ import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.enums.converter.TransportationTypeConverter;
 import com.planmate.domain.user.entity.User;
 import com.sharedsync.shared.annotation.CacheEntity;
+import com.sharedsync.shared.annotation.IgnoreShared;
 import com.sharedsync.shared.presence.annotation.PresenceRoot;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
@@ -33,7 +34,7 @@ import java.util.UUID;
 @SQLRestriction("deleted_at IS NULL")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-@Builder
+@Builder(toBuilder = true)
 @CacheEntity
 @PresenceRoot(channel = "plan-presence", idField = "planId")
 public class Plan extends BaseSoftDeleteEntity {
@@ -57,6 +58,7 @@ public class Plan extends BaseSoftDeleteEntity {
 
     @JsonProperty("isShared")
     @Column(name = "is_shared", nullable = false)
+    @IgnoreShared
     private boolean isShared;
 
     @ManyToOne(fetch = FetchType.LAZY)
