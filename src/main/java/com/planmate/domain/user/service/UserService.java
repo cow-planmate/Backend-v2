@@ -23,7 +23,7 @@ import com.planmate.domain.user.dto.UserProfileResponse;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.Gender;
 import com.planmate.domain.user.enums.UserProvider;
-import com.planmate.domain.user.event.UserProfileChangedEvent;
+import com.planmate.domain.user.internal.outbox.UserOutboxWriter;
 import com.planmate.domain.user.repository.UserRepository;
 import com.planmate.domain.user.validator.ProfileImageValidator;
 import java.time.LocalDate;
@@ -32,7 +32,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -48,7 +47,7 @@ public class UserService {
     private final PlanMemberRepository planMemberRepository;
     private final ProfileImageStorage profileImageStorage;
     private final ProfileImageValidator profileImageValidator;
-    private final ApplicationEventPublisher eventPublisher;
+    private final UserOutboxWriter userOutboxWriter;
 
     @Transactional(readOnly = true)
     public PreferredThemeListResponse getPreferredThemes() {
@@ -167,7 +166,9 @@ public class UserService {
         user.changeProfileImageUrl(newUrl);
 
         profileImageStorage.delete(previousUrl);
-        eventPublisher.publishEvent(new UserProfileChangedEvent(userId));
+        // outbox 기록은 반드시 MinIO 작업 뒤에 — advisory lock 임계 구역을 업로드/삭제만큼
+        // 늘리지 않기 위해서다. UserOutboxWriter.publish javadoc 참고.
+        userOutboxWriter.publish(user);
         return new ProfileImageResponse(newUrl);
     }
 
@@ -179,14 +180,14 @@ public class UserService {
         String previousUrl = user.getProfileImageUrl();
         user.changeProfileImageUrl(null);
         profileImageStorage.delete(previousUrl);
-        eventPublisher.publishEvent(new UserProfileChangedEvent(userId));
+        userOutboxWriter.publish(user);
     }
 
     @Transactional
     public void changeProfileVisibility(UUID userId, boolean profilePublic) {
         User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
         user.changeProfilePublic(profilePublic);
-        eventPublisher.publishEvent(new UserProfileChangedEvent(userId));
+        userOutboxWriter.publish(user);
     }
 
     @Transactional
@@ -200,7 +201,7 @@ public class UserService {
         }
 
         user.changeNickname(nickname);
-        eventPublisher.publishEvent(new UserProfileChangedEvent(userId));
+        userOutboxWriter.publish(user);
     }
 
     @Transactional
@@ -265,5 +266,9 @@ public class UserService {
     public void resignAccount(UUID userId) {
         User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
         user.softDelete();
+        // 탈퇴는 지금까지 아무 알림도 내보내지 않아, 커뮤니티가 캐시 TTL(10분)이 지나서야
+        // 탈퇴 사실을 알았다. 복제 테이블에는 TTL이 없으므로 여기서 반드시 기록해야 한다.
+        // publish 는 탈퇴 계정의 닉네임·이미지·아바타를 비워 넣는다.
+        userOutboxWriter.publish(user);
     }
 }

@@ -14,6 +14,7 @@ import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.enums.UserRole;
 import com.planmate.domain.user.repository.UserRepository;
 import com.planmate.security.JwtTokenProvider;
+import com.planmate.domain.user.internal.outbox.UserOutboxWriter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,6 +45,9 @@ class RegisterServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private JwtTokenProvider jwtTokenProvider;
+
+    @Mock
+    private UserOutboxWriter userOutboxWriter;
 
     @InjectMocks
     private RegisterService registerService;

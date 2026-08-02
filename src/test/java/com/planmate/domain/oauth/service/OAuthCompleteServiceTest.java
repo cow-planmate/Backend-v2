@@ -15,6 +15,7 @@ import com.planmate.domain.user.enums.Gender;
 import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.repository.UserRepository;
 import com.planmate.security.JwtTokenProvider;
+import com.planmate.domain.user.internal.outbox.UserOutboxWriter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,6 +48,9 @@ class OAuthCompleteServiceTest {
     private JwtTokenProvider jwtTokenProvider;
     @Mock
     private RefreshTokenRedisRepository refreshTokenRedisRepository;
+
+    @Mock
+    private UserOutboxWriter userOutboxWriter;
 
     @InjectMocks
     private OAuthCompleteService oAuthCompleteService;

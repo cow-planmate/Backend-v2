@@ -18,7 +18,7 @@ import com.planmate.domain.user.dto.UserProfileResponse;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.Gender;
 import com.planmate.domain.user.enums.UserProvider;
-import com.planmate.domain.user.event.UserProfileChangedEvent;
+import com.planmate.domain.user.internal.outbox.UserOutboxWriter;
 import com.planmate.domain.user.repository.UserRepository;
 import java.time.LocalDate;
 import java.util.List;
@@ -32,7 +32,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,7 +58,7 @@ class UserServiceTest {
     @Mock
     private PlanMemberRepository planMemberRepository;
     @Mock
-    private ApplicationEventPublisher eventPublisher;
+    private UserOutboxWriter userOutboxWriter;
 
     @InjectMocks
     private UserService userService;
@@ -233,9 +232,9 @@ class UserServiceTest {
         userService.changeNickname(USER_ID, "newNickname");
 
         verify(user).changeNickname("newNickname");
-        // 이 이벤트가 커뮤니티 캐시 무효화의 유일한 출발점이다 — 빠뜨리면 남의 피드에
-        // 최대 10분간 옛 닉네임이 남고, 아무 데서도 에러가 나지 않아 조용히 썩는다.
-        verify(eventPublisher).publishEvent(new UserProfileChangedEvent(USER_ID));
+        // 이 기록이 커뮤니티 복제본 갱신의 유일한 출발점이다 — 빠뜨리면 남의 피드에 옛 닉네임이
+        // 영구히 남는다. 캐시 시절과 달리 수렴시켜 줄 TTL이 없고, 아무 데서도 에러가 나지 않는다.
+        verify(userOutboxWriter).publish(user);
     }
 
     @Test
@@ -272,7 +271,7 @@ class UserServiceTest {
                 .isInstanceOf(DuplicateNicknameException.class);
 
         verify(user, never()).changeNickname(anyString());
-        verify(eventPublisher, never()).publishEvent(any(UserProfileChangedEvent.class));
+        verify(userOutboxWriter, never()).publish(any());
     }
 
     @Test
@@ -285,7 +284,7 @@ class UserServiceTest {
 
         verify(user).changeProfilePublic(false);
         // 공개 설정을 껐는데 커뮤니티가 모르면 비공개 프로필이 계속 노출된다
-        verify(eventPublisher).publishEvent(new UserProfileChangedEvent(USER_ID));
+        verify(userOutboxWriter).publish(user);
     }
 
     @Test
@@ -457,6 +456,9 @@ class UserServiceTest {
         verify(user).softDelete();
         verify(userRepository, never()).deleteById(any());
         verify(userRepository, never()).delete(any());
+        // 탈퇴는 오랫동안 아무 알림도 내보내지 않아, 커뮤니티가 캐시 만료 전까지 탈퇴를 몰랐다.
+        // 복제본에는 만료가 없으므로 이 기록이 빠지면 탈퇴자가 영구히 살아 있는 것처럼 보인다.
+        verify(userOutboxWriter).publish(user);
     }
 
     @Test

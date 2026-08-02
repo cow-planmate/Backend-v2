@@ -9,6 +9,7 @@ import com.planmate.domain.auth.enums.EmailVerificationPurpose;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.enums.UserRole;
+import com.planmate.domain.user.internal.outbox.UserOutboxWriter;
 import com.planmate.domain.user.repository.UserRepository;
 import com.planmate.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class RegisterService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserOutboxWriter userOutboxWriter;
 
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
@@ -47,6 +49,9 @@ public class RegisterService {
                 .build();
 
         userRepository.save(user);
+        // 가입도 outbox에 남긴다. 복제본을 빈 상태에서 만들 때 스냅샷이 이 사용자를 포함하지만,
+        // 스냅샷 이후에 가입한 사용자는 이 행이 없으면 커뮤니티가 첫 글을 쓸 때까지 모른다.
+        userOutboxWriter.publish(user);
 
         return new RegisterResponse(user.getUserId());
     }

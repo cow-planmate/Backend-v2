@@ -14,6 +14,7 @@ import com.planmate.domain.oauth.repository.OAuthSignupRedisRepository;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.repository.UserRepository;
+import com.planmate.domain.user.internal.outbox.UserOutboxWriter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -58,6 +59,9 @@ class OAuthLoginServiceTest {
     private OAuthSignupRedisRepository oAuthSignupRedisRepository;
     @Mock
     private RestTemplate restTemplate;
+
+    @Mock
+    private UserOutboxWriter userOutboxWriter;
 
     @InjectMocks
     private OAuthLoginService oAuthLoginService;

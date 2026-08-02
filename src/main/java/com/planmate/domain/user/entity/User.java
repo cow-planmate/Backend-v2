@@ -46,6 +46,14 @@ public class User extends BaseSoftDeleteEntity {
     @Column(name = "provider_id", length = 100)
     private String providerId;
 
+    /**
+     * 생성 시점에만 정해진다 — 이메일을 바꾸는 경로는 없다(변경자 메서드도 없다).
+     *
+     * <p>커뮤니티 읽기 모델이 이 전제에 기대고 있다. avatar_hash 는 이메일 MD5 인데,
+     * {@code UserOutboxWriter} 가 outbox 기록 시점에 한 번 계산해서 복제해 두므로
+     * 이메일이 바뀌면 복제본의 아바타가 영구히 낡는다. 이메일 변경 기능을 추가한다면
+     * 반드시 {@code userOutboxWriter.publish(user)} 를 같은 트랜잭션에서 호출할 것.
+     */
     @Column(length = 255)
     private String email;
 

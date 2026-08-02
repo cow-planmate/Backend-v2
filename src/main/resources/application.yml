@@ -66,6 +66,13 @@ minio:
 
 internal:
   api-token: ${INTERNAL_API_TOKEN:local-internal-token}
+  outbox:
+    # 소비자가 따라잡을 수 있는 최대 정지 시간이자, 탈퇴자의 옛 닉네임이 outbox에 남는 최대 기간.
+    # 커서가 이 창 밖으로 밀려나면 서버가 전체 스냅샷으로 격하시켜 복구한다(유실 아님).
+    retention-days: ${OUTBOX_RETENTION_DAYS:14}
+    # 아래 둘의 곱이 소비자당 초당 전달 상한이다. 처리량이 늘면 코드 변경 없이 여기서 조절한다.
+    poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:500}
+    batch-size: ${OUTBOX_BATCH_SIZE:500}
 
 # 내부 서비스 간 gRPC. HTTP 포트(server.port)와 별개이며 외부에 노출하지 않는다 —
 # 컨테이너 간 통신만 하므로 nginx 라우팅 대상이 아니다.
