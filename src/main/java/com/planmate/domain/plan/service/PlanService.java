@@ -38,6 +38,7 @@ import com.planmate.domain.timetable.repository.TimeTableRepository;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +54,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PlanService {
@@ -218,8 +220,13 @@ public class PlanService {
 
         // 이 플랜이 SharedSync 캐시에 떠 있으면(=실시간 편집 세션이 열려 있으면) 캐시도 같이 갱신한다.
         // 안 그러면 편집 세션의 stale 캐시가 나중에 주기 동기화로 flush될 때 이 이름 변경이 되돌아간다.
-        planCache.findById(planId).ifPresent(cachedPlan ->
-                planCache.save(PlanDto.fromEntity(cachedPlan.toBuilder().planName(planName).build())));
+        // 캐시 조회/저장 실패(Redis 장애 등)가 이름변경 자체를 막지 않도록 격리한다.
+        try {
+            planCache.findById(planId).ifPresent(cachedPlan ->
+                    planCache.save(PlanDto.fromEntity(cachedPlan.toBuilder().planName(planName).build())));
+        } catch (Exception e) {
+            log.warn("[Plan] 이름변경 후 SharedSync 캐시 갱신 실패 (DB는 정상 반영됨). planId={}", planId, e);
+        }
     }
 
     @PreAuthorize("@planAccessValidator.validateMember(#planId, authentication.principal)")
