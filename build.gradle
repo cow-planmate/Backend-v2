@@ -92,6 +92,9 @@ dependencies {
     // Actuator
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+    // Prometheus 메트릭 노출 (management 전용 포트로 분리, SecurityConfig 영향 안 받음)
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
     // Swagger
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9'
 

@@ -140,15 +140,23 @@ server:
       charset: UTF-8
 
 management:
+  # 별도 포트로 분리 — server.port(8080)의 SecurityFilterChain(JWT 인증)이 적용되지 않는
+  # 독립 서블릿 컨테이너가 뜬다. 8080은 인터넷에 노출되므로 여기 프로메테우스 포트는
+  # 호스트 방화벽에서 오라클-arm IP만 허용하도록 별도로 막아야 한다.
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:9091}
   endpoints:
     web:
       exposure:
-        include: health, info
+        include: health, info, prometheus
   endpoint:
     health:
       probes:
         enabled: true
       show-details: always
+  metrics:
+    tags:
+      application: planmate-backend-v2
 
 springdoc:
   swagger-ui:
