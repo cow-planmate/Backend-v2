@@ -7,6 +7,11 @@ spring:
   main:
     web-application-type: servlet
 
+  autoconfigure:
+    # management.server.port 분리 시 자동으로 붙는 Basic Auth 비활성화 — 프로메테우스가
+    # 인증 없이 스크랩하려면 필요하다. 대신 9091은 방화벽에서 오라클-arm IP만 허용해야 한다.
+    exclude: org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration
+
   jackson:
     time-zone: Asia/Seoul
 
@@ -143,6 +148,9 @@ management:
   # 별도 포트로 분리 — server.port(8080)의 SecurityFilterChain(JWT 인증)이 적용되지 않는
   # 독립 서블릿 컨테이너가 뜬다. 8080은 인터넷에 노출되므로 여기 프로메테우스 포트는
   # 호스트 방화벽에서 오라클-arm IP만 허용하도록 별도로 막아야 한다.
+  # 주의: 포트를 분리하면 Spring Boot가 이 컨텍스트에 자체 Basic Auth를 자동으로 씌운다
+  # (ManagementWebSecurityAutoConfiguration). 아래 spring.autoconfigure.exclude로 꺼야
+  # 프로메테우스가 인증 없이 스크랩할 수 있다.
   server:
     port: ${MANAGEMENT_SERVER_PORT:9091}
   endpoints:
