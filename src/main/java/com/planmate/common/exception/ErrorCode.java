@@ -47,6 +47,10 @@ public enum ErrorCode {
     // 여행지
     DESTINATION_NOT_FOUND(HttpStatus.NOT_FOUND, "DEST_001", "존재하지 않는 여행지입니다."),
 
+    // 체크리스트
+    CHECKLIST_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "CHECKLIST_001", "체크리스트 항목을 찾을 수 없습니다."),
+    CHECKLIST_ITEM_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHECKLIST_002", "본인 소유가 아닌 체크리스트 항목입니다."),
+
     // 협업 요청
     COLLABORATION_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "COLLAB_001", "협업 요청을 찾을 수 없습니다."),
     COLLABORATION_REQUEST_ALREADY_MEMBER(HttpStatus.CONFLICT, "COLLAB_002", "이미 플랜에 대한 접근 권한이 있는 사용자입니다."),
