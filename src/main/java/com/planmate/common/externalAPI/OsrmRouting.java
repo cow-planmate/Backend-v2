@@ -62,7 +62,7 @@ public class OsrmRouting {
             for (JsonNode c : coordinates) {
                 double lng = c.get(0).asDouble();
                 double lat = c.get(1).asDouble();
-                path.add(new RoutePointDto(lat, lng));
+                path.add(new RoutePointDto(lat, lng, null));
             }
             if (path.isEmpty()) return null;
             long distance = Math.round(route.path("distance").asDouble(0));

@@ -217,7 +217,7 @@ public class OdsayTransit {
                                     Double lng = doubleOrNull(point.path("x"));
                                     Double lat = doubleOrNull(point.path("y"));
                                     if (lat != null && lng != null) {
-                                        path.add(new RoutePointDto(lat, lng));
+                                        path.add(new RoutePointDto(lat, lng, null));
                                     }
                                 }
                             }
