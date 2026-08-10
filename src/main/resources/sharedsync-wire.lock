@@ -1,0 +1,29 @@
+# SharedSync wire 필드 번호 잠금. 생성물이지만 커밋 대상이다.
+# src/main/resources/sharedsync-wire.lock 로 복사해두면 다음 컴파일부터
+# 번호가 밀리는 변경(엔티티 중간 필드 삽입 등)을 컴파일 시점에 잡는다.
+Plan.plan_id=1
+Plan.plan_name=2
+Plan.adult_count=3
+Plan.child_count=4
+Plan.transportation_type=5
+Plan.user_id=6
+Plan.destination_id=7
+TimeTablePlaceBlock.block_id=1
+TimeTablePlaceBlock.time_table_id=2
+TimeTablePlaceBlock.place_id=3
+TimeTablePlaceBlock.place_name=4
+TimeTablePlaceBlock.place_content_type_id=5
+TimeTablePlaceBlock.place_address=6
+TimeTablePlaceBlock.place_thumbnail_url=7
+TimeTablePlaceBlock.place_copyright_div_cd=8
+TimeTablePlaceBlock.latitude=9
+TimeTablePlaceBlock.longitude=10
+TimeTablePlaceBlock.block_start_time=11
+TimeTablePlaceBlock.block_end_time=12
+TimeTablePlaceBlock.block_category=13
+TimeTablePlaceBlock.memo=14
+TimeTable.time_table_id=1
+TimeTable.date=2
+TimeTable.time_table_start_time=3
+TimeTable.time_table_end_time=4
+TimeTable.plan_id=5

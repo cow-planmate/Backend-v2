@@ -119,6 +119,14 @@ sharedsync:
   websocket:
     endpoint: /ws
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174}
+    # 전송 계층. stomp(현행) | both(전환기: STOMP 와 raw WS 동시) | websocket(전환 완료)
+    #
+    # 기본값을 stomp 로 두는 이유: 새 SharedSync 를 올리는 것 자체가 STOMP 경로의 내부를 바꾸는
+    # 일이라(빈 배선·채널화·reflections 제거), 전송 계층 변경과 겹치면 문제가 생겼을 때 원인
+    # 범위를 나눌 수 없다. 배포 후 관찰이 끝나면 환경변수만 both 로 올린다 — 재빌드 없이 되돌아온다.
+    #
+    # both 로 켜면 raw WS 가 /ws/v2 로 함께 뜬다(SockJS 가 /ws/** 를 통째로 잡아 같은 경로는 못 쓴다).
+    transport: ${SHAREDSYNC_TRANSPORT:both}
     redis-sync:
       enabled: true
   auth:
