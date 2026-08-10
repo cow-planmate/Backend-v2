@@ -15,4 +15,7 @@ public class RoutePointDto {
 
     @Schema(description = "경도", example = "126.9780")
     private double lng;
+
+    @Schema(description = "장소 ID (선택) — 있으면 캐시 키로 우선 사용되어 재사용 범위가 넓어진다. 없으면 좌표 기준으로 캐싱")
+    private String placeId;
 }
