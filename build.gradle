@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.planmate'
 version = '0.0.1-SNAPSHOT'
-def sharedSyncVersion = '49891fadb0'
+def sharedSyncVersion = 'cfeef67c21'
 // buf.build/planmate/proto 의 모듈 커밋. **Community 와 반드시 같은 값이어야 한다.**
 def protoCommit = '20260802133042.28c8c830142c'
 // BSR 생성 SDK 버전은 <생성 플러그인 버전>.1.<모듈 커밋> 형태라 아티팩트마다 접두사가 다르다.
