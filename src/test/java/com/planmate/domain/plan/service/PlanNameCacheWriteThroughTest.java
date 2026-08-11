@@ -5,7 +5,6 @@ import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
-import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.user.entity.User;
@@ -71,7 +70,6 @@ class PlanNameCacheWriteThroughTest {
                 .planName("옛날 이름")
                 .adultCount(2)
                 .childCount(1)
-                .transportationType(TransportationType.PUBLIC)
                 .isShared(false)
                 .user(owner)
                 .destination(destination)

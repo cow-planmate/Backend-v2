@@ -8,7 +8,6 @@ import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
-import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.user.entity.User;
@@ -80,7 +79,6 @@ class PlanChecklistCacheWriteThroughTest {
                 .planName("체크리스트 캐시 테스트")
                 .adultCount(2)
                 .childCount(0)
-                .transportationType(TransportationType.PUBLIC)
                 .isShared(true)
                 .user(owner)
                 .destination(destination)

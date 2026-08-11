@@ -14,7 +14,6 @@ import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
-import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.user.entity.User;
@@ -111,7 +110,6 @@ class CollaborationNotificationIntegrationTest {
                 .planName("알림 연결 테스트 플랜")
                 .adultCount(1)
                 .childCount(0)
-                .transportationType(TransportationType.PUBLIC)
                 .isShared(true)
                 .user(owner)
                 .destination(destination)

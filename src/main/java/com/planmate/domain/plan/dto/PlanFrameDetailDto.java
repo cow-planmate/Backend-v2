@@ -1,7 +1,6 @@
 package com.planmate.domain.plan.dto;
 
 import com.planmate.domain.plan.entity.Plan;
-import com.planmate.domain.plan.enums.TransportationType;
 
 import java.util.UUID;
 
@@ -11,8 +10,7 @@ public record PlanFrameDetailDto(
         Integer destinationId,
         String destinationName,
         int adultCount,
-        int childCount,
-        TransportationType transportationType
+        int childCount
 ) {
     public static PlanFrameDetailDto from(Plan plan) {
         return new PlanFrameDetailDto(
@@ -21,8 +19,7 @@ public record PlanFrameDetailDto(
                 plan.getDestination().getDestinationId(),
                 plan.getDestination().getDestinationName(),
                 plan.getAdultCount(),
-                plan.getChildCount(),
-                plan.getTransportationType()
+                plan.getChildCount()
         );
     }
 }

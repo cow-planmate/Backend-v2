@@ -5,7 +5,6 @@ import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
-import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.timetable.entity.TimeTable;
@@ -126,7 +125,6 @@ class SharedSyncStompIntegrationTest {
                 .planName("STOMP 통합테스트 플랜")
                 .adultCount(2)
                 .childCount(0)
-                .transportationType(TransportationType.PUBLIC)
                 .isShared(false)
                 .user(owner)
                 .destination(destination)
@@ -290,7 +288,6 @@ class SharedSyncStompIntegrationTest {
         planDto.put("planName", newPlanName);
         planDto.put("adultCount", plan.getAdultCount());
         planDto.put("childCount", plan.getChildCount());
-        planDto.put("transportationType", plan.getTransportationType().name());
         planDto.put("isShared", plan.isShared());
         planDto.put("userId", owner.getUserId().toString());
         planDto.put("destinationId", plan.getDestination().getDestinationId());

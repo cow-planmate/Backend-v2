@@ -27,7 +27,6 @@ import com.planmate.domain.plan.dto.TimetablePlaceBlockDto;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
-import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.plan.validator.PlanAccessValidator;
@@ -81,8 +80,7 @@ public class PlanService {
         validateNoDuplicateDates(request.dates());
 
         Plan savedPlan = planRepository.save(buildPlan(
-                destination, user, request.transportationType(),
-                request.adultCount(), request.childCount()));
+                destination, user, request.adultCount(), request.childCount()));
 
         List<TimeTable> timeTables = request.dates().stream()
                 .map(date -> TimeTable.builder()
@@ -116,8 +114,7 @@ public class PlanService {
         validateBlockDatesExistInTimetables(timetables, blocks);
 
         Plan savedPlan = planRepository.save(buildPlan(
-                destination, user, planFrame.transportationType(),
-                planFrame.adultCount(), planFrame.childCount()));
+                destination, user, planFrame.adultCount(), planFrame.childCount()));
 
         List<TimeTable> savedTimeTables = timeTableRepository.saveAll(timetables.stream()
                 .map(timetable -> TimeTable.builder()
@@ -278,13 +275,11 @@ public class PlanService {
         return new GetEditorsResponse(editors);
     }
 
-    private Plan buildPlan(Destination destination, User user,
-            TransportationType transportationType, int adultCount, int childCount) {
+    private Plan buildPlan(Destination destination, User user, int adultCount, int childCount) {
         return Plan.builder()
                 .planName(destination.getDestinationName())
                 .adultCount(adultCount)
                 .childCount(childCount)
-                .transportationType(transportationType)
                 .isShared(true)
                 .user(user)
                 .destination(destination)

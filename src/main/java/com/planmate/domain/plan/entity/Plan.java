@@ -4,14 +4,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.github.f4b6a3.uuid.UuidCreator;
 import com.planmate.common.entity.BaseSoftDeleteEntity;
 import com.planmate.domain.destination.entity.Destination;
-import com.planmate.domain.plan.enums.TransportationType;
-import com.planmate.domain.plan.enums.converter.TransportationTypeConverter;
 import com.planmate.domain.user.entity.User;
 import com.sharedsync.shared.annotation.CacheEntity;
 import com.sharedsync.shared.annotation.IgnoreShared;
 import com.sharedsync.shared.presence.annotation.PresenceRoot;
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
@@ -51,10 +48,6 @@ public class Plan extends BaseSoftDeleteEntity {
 
     @Column(name = "child_count", nullable = false)
     private int childCount;
-
-    @Convert(converter = TransportationTypeConverter.class)
-    @Column(name = "transportation_type", nullable = false, length = 20)
-    private TransportationType transportationType;
 
     @JsonProperty("isShared")
     @Column(name = "is_shared", nullable = false)
