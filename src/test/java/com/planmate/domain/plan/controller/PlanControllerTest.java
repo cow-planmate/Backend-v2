@@ -19,7 +19,6 @@ import com.planmate.domain.plan.dto.TimetablePlaceBlockDto;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
-import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.timetable.entity.TimeTable;
@@ -112,7 +111,7 @@ class PlanControllerTest {
     @DisplayName("플랜 프레임 생성 성공 - 201, Plan/TimeTable/PlanMember(OWNER) 실제 DB 반영 확인")
     void createPlanFrame_success() throws Exception {
         CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                destination.getDestinationId(), TransportationType.PUBLIC,
+                destination.getDestinationId(),
                 List.of(LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 2)), 2, 1);
 
         String responseBody = mockMvc.perform(post("/api/plan")
@@ -128,7 +127,6 @@ class PlanControllerTest {
         Plan savedPlan = planRepository.findById(planId).orElseThrow();
         assertThat(savedPlan.getPlanName()).isEqualTo("서울");
         assertThat(savedPlan.isShared()).isTrue();
-        assertThat(savedPlan.getTransportationType()).isEqualTo(TransportationType.PUBLIC);
 
         List<TimeTable> timeTables = timeTableRepository.findByPlanPlanIdOrderByDate(planId);
         assertThat(timeTables).hasSize(2);
@@ -148,7 +146,7 @@ class PlanControllerTest {
     @DisplayName("플랜 프레임 생성 실패 - 인증 토큰 없으면 401")
     void createPlanFrame_fail_noAuth() throws Exception {
         CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                destination.getDestinationId(), TransportationType.PUBLIC,
+                destination.getDestinationId(),
                 List.of(LocalDate.of(2026, 9, 1)), 1, 0);
 
         mockMvc.perform(post("/api/plan")
@@ -161,7 +159,7 @@ class PlanControllerTest {
     @DisplayName("플랜 프레임 생성 검증 실패 - dates가 빈 리스트면 400, COMMON_001")
     void createPlanFrame_validationFailure_emptyDates() throws Exception {
         CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                destination.getDestinationId(), TransportationType.PUBLIC, List.of(), 1, 0);
+                destination.getDestinationId(), List.of(), 1, 0);
 
         mockMvc.perform(post("/api/plan")
                         .header("Authorization", "Bearer " + accessToken)
@@ -176,7 +174,7 @@ class PlanControllerTest {
     void createPlanFrame_fail_duplicateDate() throws Exception {
         LocalDate date = LocalDate.of(2026, 9, 1);
         CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                destination.getDestinationId(), TransportationType.PUBLIC, List.of(date, date), 1, 0);
+                destination.getDestinationId(), List.of(date, date), 1, 0);
 
         mockMvc.perform(post("/api/plan")
                         .header("Authorization", "Bearer " + accessToken)
@@ -190,7 +188,7 @@ class PlanControllerTest {
     @DisplayName("플랜 프레임 생성 실패 - 존재하지 않는 destinationId면 404, DEST_001")
     void createPlanFrame_fail_destinationNotFound() throws Exception {
         CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                Integer.MAX_VALUE, TransportationType.PUBLIC, List.of(LocalDate.of(2026, 9, 1)), 1, 0);
+                Integer.MAX_VALUE, List.of(LocalDate.of(2026, 9, 1)), 1, 0);
 
         mockMvc.perform(post("/api/plan")
                         .header("Authorization", "Bearer " + accessToken)
@@ -207,7 +205,7 @@ class PlanControllerTest {
     void createPlan_success() throws Exception {
         LocalDate day1 = LocalDate.of(2026, 9, 10);
         LocalDate day2 = LocalDate.of(2026, 9, 11);
-        PlanFrameDto planFrame = new PlanFrameDto(destination.getDestinationId(), TransportationType.PRIVATE, 2, 0);
+        PlanFrameDto planFrame = new PlanFrameDto(destination.getDestinationId(), 2, 0);
         List<TimetableDto> timetables = List.of(
                 new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)),
                 new TimetableDto(day2, LocalTime.of(9, 0), LocalTime.of(20, 0)));
@@ -250,7 +248,7 @@ class PlanControllerTest {
     @Test
     @DisplayName("플랜 전체 생성 성공 - timetables/timetablePlaceBlocks 없이도 프레임만 생성됨(원본 호환)")
     void createPlan_success_frameOnly() throws Exception {
-        PlanFrameDto planFrame = new PlanFrameDto(destination.getDestinationId(), TransportationType.PRIVATE, 1, 0);
+        PlanFrameDto planFrame = new PlanFrameDto(destination.getDestinationId(), 1, 0);
         CreatePlanRequest request = new CreatePlanRequest(planFrame, null, null);
 
         mockMvc.perform(post("/api/plan/full")
@@ -265,7 +263,7 @@ class PlanControllerTest {
     @DisplayName("플랜 전체 생성 실패 - 블록 시작 시간이 같은 날짜에 중복되면 400, PLAN_004")
     void createPlan_fail_duplicateBlockTime() throws Exception {
         LocalDate day1 = LocalDate.of(2026, 9, 20);
-        PlanFrameDto planFrame = new PlanFrameDto(destination.getDestinationId(), TransportationType.PRIVATE, 1, 0);
+        PlanFrameDto planFrame = new PlanFrameDto(destination.getDestinationId(), 1, 0);
         List<TimetableDto> timetables = List.of(new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)));
         List<TimetablePlaceBlockDto> blocks = List.of(
                 new TimetablePlaceBlockDto(day1, BlockCategory.ATTRACTION, "p1", "장소1", null, null, null, null, null, null,
@@ -287,7 +285,7 @@ class PlanControllerTest {
     void createPlan_fail_invalidBlockDate() throws Exception {
         LocalDate day1 = LocalDate.of(2026, 9, 21);
         LocalDate day2 = LocalDate.of(2026, 9, 22);
-        PlanFrameDto planFrame = new PlanFrameDto(destination.getDestinationId(), TransportationType.PRIVATE, 1, 0);
+        PlanFrameDto planFrame = new PlanFrameDto(destination.getDestinationId(), 1, 0);
         List<TimetableDto> timetables = List.of(new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)));
         List<TimetablePlaceBlockDto> blocks = List.of(
                 new TimetablePlaceBlockDto(day2, BlockCategory.ATTRACTION, "p1", "장소1", null, null, null, null, null, null,
@@ -1231,7 +1229,6 @@ class PlanControllerTest {
                 .planName("테스트 플랜")
                 .adultCount(1)
                 .childCount(0)
-                .transportationType(TransportationType.PUBLIC)
                 .isShared(isShared)
                 .user(owner)
                 .destination(destination)

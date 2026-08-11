@@ -2,7 +2,6 @@ package com.planmate.domain.plan.service;
 
 import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.plan.entity.Plan;
-import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.timetable.entity.TimeTable;
 import com.planmate.domain.timetable.entity.TimeTablePlaceBlock;
 import com.planmate.domain.timetable.enums.BlockCategory;
@@ -149,7 +148,6 @@ class PlanSnapshotReaderTest {
                 .planName(planName)
                 .adultCount(1)
                 .childCount(0)
-                .transportationType(TransportationType.PUBLIC)
                 .isShared(true)
                 .destination(Destination.builder()
                         .destinationId(1)

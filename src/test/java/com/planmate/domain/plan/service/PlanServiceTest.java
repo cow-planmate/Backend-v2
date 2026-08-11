@@ -29,7 +29,6 @@ import com.planmate.domain.plan.dto.TimetablePlaceBlockDto;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
-import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.plan.validator.PlanAccessValidator;
@@ -128,7 +127,7 @@ class PlanServiceTest {
         given(planRepository.save(any(Plan.class))).willReturn(savedPlanStub());
 
         CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                DESTINATION_ID, TransportationType.PUBLIC,
+                DESTINATION_ID,
                 List.of(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 2)), 2, 1);
 
         CreatePlanFrameResponse response = planService.createPlanFrame(USER_ID, request);
@@ -140,7 +139,6 @@ class PlanServiceTest {
         Plan builtPlan = planCaptor.getValue();
         assertThat(builtPlan.getPlanName()).isEqualTo("서울");
         assertThat(builtPlan.isShared()).isTrue();
-        assertThat(builtPlan.getTransportationType()).isEqualTo(TransportationType.PUBLIC);
         assertThat(builtPlan.getAdultCount()).isEqualTo(2);
         assertThat(builtPlan.getChildCount()).isEqualTo(1);
 
@@ -167,7 +165,7 @@ class PlanServiceTest {
         given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.empty());
 
         CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                DESTINATION_ID, TransportationType.PUBLIC, List.of(LocalDate.of(2026, 8, 1)), 1, 0);
+                DESTINATION_ID, List.of(LocalDate.of(2026, 8, 1)), 1, 0);
 
         assertThatThrownBy(() -> planService.createPlanFrame(USER_ID, request))
                 .isInstanceOf(DestinationNotFoundException.class);
@@ -182,7 +180,7 @@ class PlanServiceTest {
         given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
 
         CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                DESTINATION_ID, TransportationType.PUBLIC, List.of(LocalDate.of(2026, 8, 1)), 1, 0);
+                DESTINATION_ID, List.of(LocalDate.of(2026, 8, 1)), 1, 0);
 
         assertThatThrownBy(() -> planService.createPlanFrame(USER_ID, request))
                 .isInstanceOf(UserNotFoundException.class);
@@ -198,7 +196,7 @@ class PlanServiceTest {
 
         LocalDate date = LocalDate.of(2026, 8, 1);
         CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                DESTINATION_ID, TransportationType.PUBLIC, List.of(date, date), 1, 0);
+                DESTINATION_ID, List.of(date, date), 1, 0);
 
         assertThatThrownBy(() -> planService.createPlanFrame(USER_ID, request))
                 .isInstanceOf(PlanDuplicateDateException.class);
@@ -218,7 +216,7 @@ class PlanServiceTest {
 
         LocalDate day1 = LocalDate.of(2026, 8, 1);
         LocalDate day2 = LocalDate.of(2026, 8, 2);
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, TransportationType.PRIVATE, 2, 0);
+        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 2, 0);
         List<TimetableDto> timetables = List.of(
                 new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)),
                 new TimetableDto(day2, LocalTime.of(9, 0), LocalTime.of(20, 0)));
@@ -256,7 +254,7 @@ class PlanServiceTest {
         given(planRepository.save(any(Plan.class))).willReturn(savedPlanStub());
         given(timeTableRepository.saveAll(any())).willAnswer(invocation -> invocation.getArgument(0));
 
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, TransportationType.PRIVATE, 1, 0);
+        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 1, 0);
         CreatePlanRequest request = new CreatePlanRequest(planFrame, null, null);
 
         CreatePlanResponse response = planService.createPlan(USER_ID, request);
@@ -273,7 +271,7 @@ class PlanServiceTest {
         given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
 
         LocalDate day1 = LocalDate.of(2026, 8, 1);
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, TransportationType.PRIVATE, 1, 0);
+        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 1, 0);
         List<TimetableDto> timetables = List.of(
                 new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)),
                 new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)));
@@ -293,7 +291,7 @@ class PlanServiceTest {
         given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
 
         LocalDate day1 = LocalDate.of(2026, 8, 1);
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, TransportationType.PRIVATE, 1, 0);
+        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 1, 0);
         List<TimetableDto> timetables = List.of(new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)));
         List<TimetablePlaceBlockDto> blocks = List.of(
                 new TimetablePlaceBlockDto(day1, BlockCategory.ATTRACTION, "p1", "장소1", null, null, null, null, null, null,
@@ -317,7 +315,7 @@ class PlanServiceTest {
 
         LocalDate day1 = LocalDate.of(2026, 8, 1);
         LocalDate day2 = LocalDate.of(2026, 8, 2);
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, TransportationType.PRIVATE, 1, 0);
+        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 1, 0);
         List<TimetableDto> timetables = List.of(new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)));
         List<TimetablePlaceBlockDto> blocks = List.of(
                 new TimetablePlaceBlockDto(day2, BlockCategory.ATTRACTION, "p1", "장소1", null, null, null, null, null, null,
@@ -336,7 +334,7 @@ class PlanServiceTest {
     void createPlan_fail_destinationNotFound() {
         given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.empty());
 
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, TransportationType.PRIVATE, 1, 0);
+        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 1, 0);
         CreatePlanRequest request = new CreatePlanRequest(planFrame, null, null);
 
         assertThatThrownBy(() -> planService.createPlan(USER_ID, request))
@@ -460,7 +458,6 @@ class PlanServiceTest {
                 .planName("서울 여행")
                 .adultCount(1)
                 .childCount(0)
-                .transportationType(TransportationType.PUBLIC)
                 .isShared(isShared)
                 .destination(destination())
                 .build();

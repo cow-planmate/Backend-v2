@@ -3,7 +3,6 @@ package com.planmate.domain.plan.service;
 import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.plan.entity.Plan;
-import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.UserProvider;
@@ -62,7 +61,6 @@ class PlanShareCacheOverwriteRegressionTest {
                 .planName("공유 회귀테스트 플랜")
                 .adultCount(1)
                 .childCount(0)
-                .transportationType(TransportationType.PUBLIC)
                 .isShared(false)
                 .user(owner)
                 .destination(destination)
