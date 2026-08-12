@@ -5,7 +5,6 @@ import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
-import com.planmate.domain.plan.enums.TransportationType;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.timetable.entity.TimeTable;
@@ -103,7 +102,6 @@ class SharedSyncWireContractGoldenTest {
                 .planName("Wire Golden 테스트 플랜")
                 .adultCount(2)
                 .childCount(0)
-                .transportationType(TransportationType.PUBLIC)
                 .isShared(false)
                 .user(owner)
                 .destination(destination)
