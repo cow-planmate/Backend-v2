@@ -24,6 +24,9 @@ java {
     }
 }
 
+// wire 스키마 좌표(-Asharedsync.proto.package/file)는 더 이상 지정하지 않는다.
+// SharedSync 가 엔티티 패키지(com.planmate.*)에서 planmate.sync.v1 로 유도한다 — 생성 결과는 동일하다.
+
 repositories {
     mavenCentral()
     mavenLocal()
