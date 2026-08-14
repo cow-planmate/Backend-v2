@@ -7,8 +7,9 @@ plugins {
 group = 'com.planmate'
 version = '0.0.1-SNAPSHOT'
 def sharedSyncVersion = 'b705edc873'
-// buf.build/planmate/proto 의 모듈 커밋. **Community 와 반드시 같은 값이어야 한다.**
-def protoCommit = '20260802133042.28c8c830142c'
+// buf.build/planmate/proto 의 모듈 커밋. **Backend-v2 / Community / Social / Notification
+// 네 서비스가 반드시 같은 값이어야 한다.** 알림 이벤트 계약이 넷 모두에 걸쳐 있다.
+def protoCommit = '20260814100725.145b6cc42659'
 // BSR 생성 SDK 버전은 <생성 플러그인 버전>.1.<모듈 커밋> 형태라 아티팩트마다 접두사가 다르다.
 // 값은 추측하지 말고 BSR 모듈의 Generated SDKs 탭에서 확인할 것.
 def protobufSdkVersion = "35.1.0.1.$protoCommit"
@@ -35,11 +36,6 @@ repositories {
     maven { url 'https://buf.build/gen/maven' }
 }
 
-def localNotificationProto = file('../proto/build/generated/java/build/buf/gen/planmate/notification/v1')
-def notificationProtoSdkVersion = System.getenv('NOTIFICATION_PROTO_SDK_VERSION')
-if (localNotificationProto.exists()) {
-    sourceSets.main.java.srcDir(localNotificationProto)
-}
 
 dependencies {
     // ── 서비스 간 gRPC 계약 (proto / BSR) ──
@@ -47,9 +43,6 @@ dependencies {
 
     implementation "build.buf.gen:planmate_proto_protocolbuffers_java:$protobufSdkVersion"
     implementation "build.buf.gen:planmate_proto_grpc_java:$grpcSdkVersion"
-    if (!localNotificationProto.exists() && notificationProtoSdkVersion) {
-        implementation "build.buf.gen:planmate_proto_protocolbuffers_java:$notificationProtoSdkVersion"
-    }
 
     // gRPC 서버. spring-grpc 1.0+ 는 Spring Boot 4 를 요구하므로 Boot 3.5 인 이 프로젝트는
     // net.devh 스타터를 쓴다 (Boot 4 로 올릴 때 spring-grpc 로 갈아탈 것).
