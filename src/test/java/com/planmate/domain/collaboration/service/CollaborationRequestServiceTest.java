@@ -16,6 +16,7 @@ import com.planmate.domain.collaboration.enums.CollaborationRequestStatus;
 import com.planmate.domain.collaboration.enums.CollaborationRequestType;
 import com.planmate.domain.collaboration.repository.CollaborationRequestRepository;
 import com.planmate.domain.notification.CollaborationNotificationEvent;
+import com.planmate.domain.notification.CollaborationKafkaNotificationPublisher;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
@@ -62,6 +63,8 @@ class CollaborationRequestServiceTest {
     private UserRepository userRepository;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+    @Mock
+    private CollaborationKafkaNotificationPublisher kafkaNotifications;
 
     @InjectMocks
     private CollaborationRequestService collaborationRequestService;

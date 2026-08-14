@@ -35,12 +35,21 @@ repositories {
     maven { url 'https://buf.build/gen/maven' }
 }
 
+def localNotificationProto = file('../proto/build/generated/java/build/buf/gen/planmate/notification/v1')
+def notificationProtoSdkVersion = System.getenv('NOTIFICATION_PROTO_SDK_VERSION')
+if (localNotificationProto.exists()) {
+    sourceSets.main.java.srcDir(localNotificationProto)
+}
+
 dependencies {
     // ── 서비스 간 gRPC 계약 (proto / BSR) ──
     implementation platform("io.grpc:grpc-bom:$grpcVersion")
 
     implementation "build.buf.gen:planmate_proto_protocolbuffers_java:$protobufSdkVersion"
     implementation "build.buf.gen:planmate_proto_grpc_java:$grpcSdkVersion"
+    if (!localNotificationProto.exists() && notificationProtoSdkVersion) {
+        implementation "build.buf.gen:planmate_proto_protocolbuffers_java:$notificationProtoSdkVersion"
+    }
 
     // gRPC 서버. spring-grpc 1.0+ 는 Spring Boot 4 를 요구하므로 Boot 3.5 인 이 프로젝트는
     // net.devh 스타터를 쓴다 (Boot 4 로 올릴 때 spring-grpc 로 갈아탈 것).
@@ -72,6 +81,9 @@ dependencies {
 
     // Redis
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // Kafka notification outbox publisher
+    implementation 'org.springframework.kafka:spring-kafka'
 
     // Firebase Admin (FCM)
     implementation 'com.google.firebase:firebase-admin:9.3.0'

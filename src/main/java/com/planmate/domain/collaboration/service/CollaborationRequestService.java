@@ -17,6 +17,7 @@ import com.planmate.domain.collaboration.enums.CollaborationRequestStatus;
 import com.planmate.domain.collaboration.enums.CollaborationRequestType;
 import com.planmate.domain.collaboration.repository.CollaborationRequestRepository;
 import com.planmate.domain.notification.CollaborationNotificationEvent;
+import com.planmate.domain.notification.CollaborationKafkaNotificationPublisher;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
@@ -43,6 +44,7 @@ public class CollaborationRequestService {
     private final PlanMemberRepository planMemberRepository;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final CollaborationKafkaNotificationPublisher kafkaNotifications;
 
     @PreAuthorize("@planAccessValidator.validateMember(#planId, authentication.principal)")
     @Transactional
@@ -83,6 +85,8 @@ public class CollaborationRequestService {
                 "일정 초대",
                 sender.getNickname() + "님이 '" + plan.getPlanName() + "' 일정에 초대했습니다."
         ));
+        kafkaNotifications.requested(receiver.getUserId(), sender.getUserId(), sender.getNickname(),
+                plan.getPlanId(), plan.getPlanName(), saved.getCollaborationRequestId(), true);
 
         return new InviteUserToPlanResponse(saved.getCollaborationRequestId());
     }
@@ -124,6 +128,8 @@ public class CollaborationRequestService {
                 "편집 권한 요청",
                 sender.getNickname() + "님이 '" + plan.getPlanName() + "' 일정의 편집 권한을 요청했습니다."
         ));
+        kafkaNotifications.requested(owner.getUserId(), sender.getUserId(), sender.getNickname(),
+                plan.getPlanId(), plan.getPlanName(), saved.getCollaborationRequestId(), false);
 
         return new RequestEditAccessResponse(saved.getCollaborationRequestId());
     }
@@ -179,6 +185,9 @@ public class CollaborationRequestService {
                 "요청 수락",
                 request.getReceiver().getNickname() + "님이 '" + plan.getPlanName() + "' 관련 요청을 수락했습니다."
         ));
+        kafkaNotifications.result(request.getSender().getUserId(), request.getReceiver().getUserId(),
+                request.getReceiver().getNickname(), plan.getPlanId(), plan.getPlanName(),
+                request.getCollaborationRequestId(), true);
 
         return new AcceptRequestResponse(plan.getPlanId());
     }
@@ -205,6 +214,9 @@ public class CollaborationRequestService {
                 "요청 거절",
                 request.getReceiver().getNickname() + "님이 '" + request.getPlan().getPlanName() + "' 관련 요청을 거절했습니다."
         ));
+        kafkaNotifications.result(request.getSender().getUserId(), request.getReceiver().getUserId(),
+                request.getReceiver().getNickname(), request.getPlan().getPlanId(), request.getPlan().getPlanName(),
+                request.getCollaborationRequestId(), false);
 
         return new RejectRequestResponse(request.getCollaborationRequestId());
     }
