@@ -8,6 +8,7 @@ import com.planmate.domain.user.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -31,12 +32,23 @@ public class NotificationEventListener {
     private final SseEmitterService sseEmitterService;
     private final UserRepository userRepository;
 
+    /**
+     * 알림 센터(Notification 서비스) 컷오버 스위치. 같은 협업 이벤트가 outbox 를 거쳐
+     * Kafka 로도 나가므로, 알림 센터가 전달을 맡기 시작하면 이 경로는 꺼야 한다.
+     * 켜둔 채로 두면 같은 알림이 두 경로로 나가 사용자에게 두 번 도착한다.
+     */
+    @Value("${notification.legacy-delivery.enabled:true}")
+    private boolean legacyDeliveryEnabled;
+
     // AFTER_COMMIT 시점엔 원래 트랜잭션이 이미 끝나 있어 REQUIRED(기본값)로는 참여할 트랜잭션이 없다.
     // Spring이 이 조합 자체를 기동 시점에 막아두므로(RestrictedTransactionalEventListenerFactory) REQUIRES_NEW 필수.
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(CollaborationNotificationEvent event) {
+        if (!legacyDeliveryEnabled) {
+            return;
+        }
         User receiver = userRepository.findById(event.userId()).orElse(null);
         if (receiver != null) {
             FcmSendResult result = fcmService.sendNotification(receiver.getFcmToken(), event.fcmTitle(), event.fcmBody());
