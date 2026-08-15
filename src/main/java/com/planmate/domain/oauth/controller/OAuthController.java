@@ -51,14 +51,12 @@ public class OAuthController {
         try {
             OAuthProvider oAuthProvider = OAuthProvider.fromPath(provider);
 
-            // NAVER만 CSRF 방어용 state 발급(10-1절, 더블 서브밋 쿠키)
-            String state = (oAuthProvider == OAuthProvider.NAVER) ? UUID.randomUUID().toString() : null;
+            // 모든 provider에 CSRF 방어용 state 발급(10-1절, 더블 서브밋 쿠키)
+            String state = UUID.randomUUID().toString();
 
             String authorizeUrl = oAuthLoginService.redirectToProvider(oAuthProvider, state);
 
-            if (oAuthProvider == OAuthProvider.NAVER) {
-                setStateCookie(response, state);
-            }
+            setStateCookie(response, state);
 
             response.sendRedirect(authorizeUrl);
         } catch (Exception e) {
@@ -76,8 +74,8 @@ public class OAuthController {
         try {
             OAuthProvider oAuthProvider = OAuthProvider.fromPath(provider);
 
-            // NAVER는 쿠키-쿼리파라미터 대조로 CSRF 검증, 실패하면 Service 호출 없이 바로 실패 리다이렉트(10-1절)
-            if (oAuthProvider == OAuthProvider.NAVER && !isStateValid(request, state)) {
+            // 쿠키-쿼리파라미터 대조로 CSRF 검증, 실패하면 Service 호출 없이 바로 실패 리다이렉트(10-1절)
+            if (!isStateValid(request, state)) {
                 response.sendRedirect(buildFailRedirect("INVALID_STATE"));
                 return;
             }

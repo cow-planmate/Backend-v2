@@ -148,6 +148,15 @@ class OAuthControllerTest {
         return UriComponentsBuilder.fromUriString(redirectUrl).build().getQueryParams().toSingleValueMap();
     }
 
+    // 로그인 시작을 실제로 호출해서 진짜 state 쿠키를 발급받는다(더블 서브밋 흐름 재현) — 모든 provider가 공통으로 CSRF 검증을 받으므로 콜백 테스트마다 재사용
+    private jakarta.servlet.http.Cookie startAndGetStateCookie(String providerPath) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/oauth/" + providerPath))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(cookie().exists("oauth_state"))
+                .andReturn();
+        return result.getResponse().getCookie("oauth_state");
+    }
+
     // providerId는 KakaoUserResponse.id(Long) 규격에 맞춰 숫자 문자열로만 생성(stubKakaoProfile이 Long.parseLong으로 파싱)
     private String randomNumericProviderId() {
         return String.valueOf(Math.abs(UUID.randomUUID().getMostSignificantBits()));
@@ -166,12 +175,32 @@ class OAuthControllerTest {
     // ===================== 1) SNS 로그인 시작 =====================
 
     @Test
-    @DisplayName("로그인 시작 성공 - KAKAO 인가 페이지로 302 리다이렉트")
-    void redirectToProvider_kakao_redirectsToAuthorizeUrl() throws Exception {
-        mockMvc.perform(get("/api/oauth/kakao"))
+    @DisplayName("로그인 시작 성공 - KAKAO는 인가 페이지로 302 리다이렉트, state 쿠키도 인가 URL과 동일하게 포함(더블 서브밋)")
+    void redirectToProvider_kakao_setsStateCookieMatchingAuthorizeUrl() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/oauth/kakao"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(header().string("Location", startsWith("https://kauth.kakao.com/oauth/authorize")))
-                .andExpect(header().string("Location", containsString("client_id=")));
+                .andExpect(header().string("Location", containsString("client_id=")))
+                .andExpect(cookie().exists("oauth_state"))
+                .andReturn();
+
+        String location = result.getResponse().getHeader("Location");
+        String stateCookieValue = result.getResponse().getCookie("oauth_state").getValue();
+        assertThat(location).contains("state=" + stateCookieValue);
+    }
+
+    @Test
+    @DisplayName("로그인 시작 성공 - GOOGLE은 인가 페이지로 302 리다이렉트, state 쿠키도 인가 URL과 동일하게 포함(더블 서브밋)")
+    void redirectToProvider_google_setsStateCookieMatchingAuthorizeUrl() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/oauth/google"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string("Location", containsString("access_type=offline")))
+                .andExpect(cookie().exists("oauth_state"))
+                .andReturn();
+
+        String location = result.getResponse().getHeader("Location");
+        String stateCookieValue = result.getResponse().getCookie("oauth_state").getValue();
+        assertThat(location).contains("state=" + stateCookieValue);
     }
 
     @Test
@@ -205,8 +234,12 @@ class OAuthControllerTest {
     void callback_existingUser_redirectsWithConsumableLoginCode() throws Exception {
         User existingUser = saveActiveKakaoUser();
         stubKakaoProfile(existingUser.getProviderId(), existingUser.getEmail(), existingUser.getNickname());
+        jakarta.servlet.http.Cookie stateCookie = startAndGetStateCookie("kakao");
 
-        MvcResult result = mockMvc.perform(get("/api/oauth/kakao/callback").param("code", "dummy-auth-code"))
+        MvcResult result = mockMvc.perform(get("/api/oauth/kakao/callback")
+                        .param("code", "dummy-auth-code")
+                        .param("state", stateCookie.getValue())
+                        .cookie(stateCookie))
                 .andExpect(status().is3xxRedirection())
                 .andReturn();
 
@@ -255,8 +288,12 @@ class OAuthControllerTest {
                 .build());
 
         stubKakaoProfile(deletedUser.getProviderId(), deletedUser.getEmail(), sharedNickname);
+        jakarta.servlet.http.Cookie stateCookie = startAndGetStateCookie("kakao");
 
-        MvcResult result = mockMvc.perform(get("/api/oauth/kakao/callback").param("code", "dummy-auth-code"))
+        MvcResult result = mockMvc.perform(get("/api/oauth/kakao/callback")
+                        .param("code", "dummy-auth-code")
+                        .param("state", stateCookie.getValue())
+                        .cookie(stateCookie))
                 .andExpect(status().is3xxRedirection())
                 .andReturn();
 
@@ -283,8 +320,12 @@ class OAuthControllerTest {
                 .build());
 
         stubKakaoProfile(randomNumericProviderId(), conflictingEmail, "카카오유저");
+        jakarta.servlet.http.Cookie stateCookie = startAndGetStateCookie("kakao");
 
-        mockMvc.perform(get("/api/oauth/kakao/callback").param("code", "dummy-auth-code"))
+        mockMvc.perform(get("/api/oauth/kakao/callback")
+                        .param("code", "dummy-auth-code")
+                        .param("state", stateCookie.getValue())
+                        .cookie(stateCookie))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(header().string("Location", containsString("reason=EMAIL_CONFLICT")));
     }
@@ -295,8 +336,12 @@ class OAuthControllerTest {
         String providerId = randomNumericProviderId();
         String email = "new-kakao-" + UUID.randomUUID() + "@example.com";
         stubKakaoProfile(providerId, email, "신규유저!!");
+        jakarta.servlet.http.Cookie stateCookie = startAndGetStateCookie("kakao");
 
-        MvcResult result = mockMvc.perform(get("/api/oauth/kakao/callback").param("code", "dummy-auth-code"))
+        MvcResult result = mockMvc.perform(get("/api/oauth/kakao/callback")
+                        .param("code", "dummy-auth-code")
+                        .param("state", stateCookie.getValue())
+                        .cookie(stateCookie))
                 .andExpect(status().is3xxRedirection())
                 .andReturn();
 
@@ -324,8 +369,12 @@ class OAuthControllerTest {
                 .role(UserRole.USER)
                 .build());
         stubGoogleProfile(existingUser.getProviderId(), existingUser.getEmail(), existingUser.getNickname());
+        jakarta.servlet.http.Cookie stateCookie = startAndGetStateCookie("google");
 
-        MvcResult result = mockMvc.perform(get("/api/oauth/google/callback").param("code", "dummy-auth-code"))
+        MvcResult result = mockMvc.perform(get("/api/oauth/google/callback")
+                        .param("code", "dummy-auth-code")
+                        .param("state", stateCookie.getValue())
+                        .cookie(stateCookie))
                 .andExpect(status().is3xxRedirection())
                 .andReturn();
 
@@ -372,6 +421,29 @@ class OAuthControllerTest {
         mockMvc.perform(get("/api/oauth/naver/callback")
                         .param("code", "dummy-auth-code")
                         .param("state", "some-state-value"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string("Location", containsString("reason=INVALID_STATE")));
+    }
+
+    @Test
+    @DisplayName("콜백 실패 - KAKAO도 state 쿠키 없이 호출하면 INVALID_STATE 리다이렉트(NAVER 전용이 아니라 전체 provider에 적용됨)")
+    void callback_kakaoWithoutStateCookie_redirectsInvalidState() throws Exception {
+        mockMvc.perform(get("/api/oauth/kakao/callback")
+                        .param("code", "dummy-auth-code")
+                        .param("state", "some-state-value"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string("Location", containsString("reason=INVALID_STATE")));
+    }
+
+    @Test
+    @DisplayName("콜백 실패 - KAKAO state 쿠키는 있지만 쿼리파라미터 state와 값이 다르면 INVALID_STATE 리다이렉트")
+    void callback_kakaoStateMismatch_redirectsInvalidState() throws Exception {
+        jakarta.servlet.http.Cookie stateCookie = startAndGetStateCookie("kakao");
+
+        mockMvc.perform(get("/api/oauth/kakao/callback")
+                        .param("code", "dummy-auth-code")
+                        .param("state", "different-state-value")
+                        .cookie(stateCookie))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(header().string("Location", containsString("reason=INVALID_STATE")));
     }
