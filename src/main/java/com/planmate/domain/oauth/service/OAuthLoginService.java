@@ -41,7 +41,7 @@ public class OAuthLoginService {
     private final UserOutboxWriter userOutboxWriter;
     private final RestTemplate restTemplate;
 
-    /** 1. 로그인 시작 URL 생성 — state는 Controller가 만든 값을 그대로 받아 쿼리파라미터에 끼워넣기만 함(NAVER 외엔 무시) */
+    /** 1. 로그인 시작 URL 생성 — state는 Controller가 만든 값을 그대로 받아 모든 provider의 쿼리파라미터에 끼워넣음(CSRF 방어용) */
     @Transactional(readOnly = true)
     public String redirectToProvider(OAuthProvider provider, String state) {
         OAuthProperties.Provider config = oAuthProperties.getProvider(provider);
@@ -50,14 +50,12 @@ public class OAuthLoginService {
                 .fromHttpUrl(config.getAuthorizeUri())
                 .queryParam("client_id", config.getClientId())
                 .queryParam("redirect_uri", config.getRedirectUri())
-                .queryParam("response_type", "code");
+                .queryParam("response_type", "code")
+                .queryParam("state", state);
 
-        switch (provider) {
-            case GOOGLE -> builder.queryParam("access_type", "offline")
+        if (provider == OAuthProvider.GOOGLE) {
+            builder.queryParam("access_type", "offline")
                     .queryParam("prompt", "consent");
-            case NAVER -> builder.queryParam("state", state);
-            default -> {
-            }
         }
 
         if (config.getScope() != null) {

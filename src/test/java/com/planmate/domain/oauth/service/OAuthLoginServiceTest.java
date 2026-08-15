@@ -351,25 +351,27 @@ class OAuthLoginServiceTest {
     }
 
     @Test
-    @DisplayName("로그인 시작 URL - KAKAO는 부가 파라미터 없이 기본 쿼리만 구성")
-    void buildAuthorizeUrl_kakao() {
+    @DisplayName("로그인 시작 URL - KAKAO는 Controller가 만든 state를 쿼리파라미터에 포함하고, GOOGLE 전용 파라미터는 없음")
+    void buildAuthorizeUrl_kakao_embedsControllerGeneratedState() {
         given(oAuthProperties.getProvider(OAuthProvider.KAKAO)).willReturn(kakaoProviderConfig());
 
-        String url = oAuthLoginService.redirectToProvider(OAuthProvider.KAKAO, null);
+        String url = oAuthLoginService.redirectToProvider(OAuthProvider.KAKAO, "csrf-state-kakao");
 
         assertThat(url).startsWith("https://kauth.kakao.com/oauth/authorize");
         assertThat(url).contains("client_id=kakao-client-id");
         assertThat(url).contains("response_type=code");
-        assertThat(url).doesNotContain("access_type").doesNotContain("state=");
+        assertThat(url).contains("state=csrf-state-kakao");
+        assertThat(url).doesNotContain("access_type");
     }
 
     @Test
-    @DisplayName("로그인 시작 URL - GOOGLE은 access_type=offline, prompt=consent 추가")
-    void buildAuthorizeUrl_google() {
+    @DisplayName("로그인 시작 URL - GOOGLE은 Controller가 만든 state에 더해 access_type=offline, prompt=consent 추가")
+    void buildAuthorizeUrl_google_embedsControllerGeneratedState() {
         given(oAuthProperties.getProvider(OAuthProvider.GOOGLE)).willReturn(googleProviderConfig());
 
-        String url = oAuthLoginService.redirectToProvider(OAuthProvider.GOOGLE, null);
+        String url = oAuthLoginService.redirectToProvider(OAuthProvider.GOOGLE, "csrf-state-google");
 
+        assertThat(url).contains("state=csrf-state-google");
         assertThat(url).contains("access_type=offline").contains("prompt=consent");
     }
 
