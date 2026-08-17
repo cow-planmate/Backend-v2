@@ -1,10 +1,5 @@
 package com.planmate.domain.route.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.planmate.common.externalAPI.OdsayTransit;
-import com.planmate.common.externalAPI.OdsayTransit.TransitLaneResult;
-import com.planmate.common.externalAPI.OdsayTransit.TransitResult;
 import com.planmate.common.externalAPI.OsrmRouting;
 import com.planmate.common.externalAPI.OsrmRouting.RoutingResult;
 import com.planmate.common.externalAPI.OsrmRouting.TripResult;
@@ -14,34 +9,24 @@ import com.planmate.domain.route.dto.RouteResponse;
 import com.planmate.domain.route.dto.RouteTableResponse;
 import com.planmate.domain.route.dto.RouteTripLegDto;
 import com.planmate.domain.route.dto.RouteTripResponse;
-import com.planmate.domain.route.dto.TransitLaneResponse;
-import com.planmate.domain.route.dto.TransitRouteResponse;
-import com.planmate.domain.route.entity.RouteCache;
 import com.planmate.domain.route.enums.RouteCacheMode;
 import com.planmate.domain.route.repository.RouteCacheRepository;
-import com.planmate.domain.route.repository.RouteTransitLaneCacheRepository;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Slf4j
 @RequiredArgsConstructor
-public class RouteService {
+public class RoadRouteService {
 
     private static final long ROAD_CACHE_TTL_DAYS = 30;
-    private static final long TRANSIT_CACHE_TTL_DAYS = 14;
 
     private final OsrmRouting osrmRouting;
-    private final OdsayTransit odsayTransit;
     private final RouteCacheRepository routeCacheRepository;
-    private final RouteTransitLaneCacheRepository laneCacheRepository;
-    private final ObjectMapper objectMapper;
+    private final RouteCacheSupport routeCacheSupport;
 
     /**
      * 경유지 기반 도로 경로를 조회한다. 인접 쌍 단위로 캐시를 확인/채우고, 받은 경로 조각을
@@ -122,65 +107,6 @@ public class RouteService {
     }
 
     /**
-     * 두 지점 간 대중교통 경로를 조회한다. 캐시에 있으면 ODsay를 호출하지 않는다.
-     */
-    @Transactional
-    public TransitRouteResponse getTransit(RoutePointDto from, RoutePointDto to) {
-        String fromKey = RouteCacheKeyGenerator.key(from);
-        String toKey = RouteCacheKeyGenerator.key(to);
-
-        Optional<TransitRouteResponse> cached = readValidCache(
-                routeCacheRepository.findByFromKeyAndToKeyAndMode(fromKey, toKey, RouteCacheMode.TRANSIT),
-                TransitRouteResponse.class, "대중교통");
-        if (cached.isPresent()) {
-            return cached.get();
-        }
-
-        TransitResult result = odsayTransit.getTransitPath(from, to);
-        TransitRouteResponse response = (result == null)
-                ? new TransitRouteResponse(false, "대중교통 경로 조회에 실패했습니다", new ArrayList<>(), 0, 0, 0)
-                : new TransitRouteResponse(result.available(), result.message(), result.routes(),
-                        result.busCount(), result.subwayCount(), result.subwayBusCount());
-
-        // 조회 실패/경로 없음은 캐싱하지 않는다 — 일시적 장애를 "경로 없음"으로 영구 고정시키지 않기 위해.
-        if (result != null && result.available()) {
-            writeCache(fromKey, toKey, RouteCacheMode.TRANSIT, response, TRANSIT_CACHE_TTL_DAYS, "대중교통");
-        }
-        return response;
-    }
-
-    /**
-     * 선택한 대중교통 경로(mapObj)의 지도 폴리라인을 조회한다. mapObj는 실측(2026-08-11)으로
-     * 동일 경로 재조회 시 값이 바뀌지 않는 것을 확인해 캐싱 대상으로 확정했다.
-     */
-    @Transactional
-    public TransitLaneResponse getTransitLane(String mapObj) {
-        if (mapObj == null || mapObj.isBlank()) {
-            return new TransitLaneResponse(new ArrayList<>());
-        }
-
-        Optional<TransitLaneResponse> cached = readValidLaneCache(mapObj);
-        if (cached.isPresent()) {
-            return cached.get();
-        }
-
-        TransitLaneResult result = odsayTransit.getLane(mapObj);
-        TransitLaneResponse response = (result == null)
-                ? new TransitLaneResponse(new ArrayList<>())
-                : new TransitLaneResponse(result.lanes());
-
-        if (result != null && !result.lanes().isEmpty()) {
-            try {
-                String payload = objectMapper.writeValueAsString(response);
-                laneCacheRepository.upsert(mapObj, payload, LocalDateTime.now().plusDays(TRANSIT_CACHE_TTL_DAYS));
-            } catch (Exception e) {
-                log.warn("폴리라인 캐시 저장 실패(API 결과는 정상 반환): {}", e.getMessage());
-            }
-        }
-        return response;
-    }
-
-    /**
      * 도로(driving/foot) 인접 쌍 하나를 캐시에서 찾고, 없으면 OSRM {@code /route}를 호출해 채운다.
      * {@code table}과 {@code directions}가 이 메서드를 공유하므로, 같은 (from,to,mode) 쌍이면
      * 두 엔드포인트가 캐시 행을 그대로 공유한다 — table 미스 시에도 OSRM {@code /table}이 아니라
@@ -190,7 +116,7 @@ public class RouteService {
         String fromKey = RouteCacheKeyGenerator.key(from);
         String toKey = RouteCacheKeyGenerator.key(to);
 
-        Optional<RoutingResult> cached = readValidCache(
+        Optional<RoutingResult> cached = routeCacheSupport.readValidCache(
                 routeCacheRepository.findByFromKeyAndToKeyAndMode(fromKey, toKey, mode),
                 RoutingResult.class, "도로");
         if (cached.isPresent()) {
@@ -201,40 +127,8 @@ public class RouteService {
         if (result == null) {
             return null;
         }
-        writeCache(fromKey, toKey, mode, result, ROAD_CACHE_TTL_DAYS, "도로");
+        routeCacheSupport.writeCache(fromKey, toKey, mode, result, ROAD_CACHE_TTL_DAYS, "도로");
         return result;
-    }
-
-    private <T> Optional<T> readValidCache(Optional<RouteCache> cacheEntry, Class<T> type, String logLabel) {
-        return cacheEntry
-                .filter(c -> c.getExpiredAt().isAfter(LocalDateTime.now()))
-                .flatMap(c -> deserialize(c.getResponsePayload(), type, logLabel));
-    }
-
-    private Optional<TransitLaneResponse> readValidLaneCache(String mapObj) {
-        return laneCacheRepository.findByMapObj(mapObj)
-                .filter(c -> c.getExpiredAt().isAfter(LocalDateTime.now()))
-                .flatMap(c -> deserialize(c.getResponsePayload(), TransitLaneResponse.class, "폴리라인"));
-    }
-
-    private <T> Optional<T> deserialize(String payload, Class<T> type, String logLabel) {
-        try {
-            return Optional.of(objectMapper.readValue(payload, type));
-        } catch (JsonProcessingException e) {
-            log.warn("{} 캐시 역직렬화 실패, API 재호출로 폴백: {}", logLabel, e.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    private void writeCache(String fromKey, String toKey, RouteCacheMode mode, Object payloadObject,
-            long ttlDays, String logLabel) {
-        try {
-            String payload = objectMapper.writeValueAsString(payloadObject);
-            routeCacheRepository.upsert(fromKey, toKey, mode.getDbValue(), payload,
-                    LocalDateTime.now().plusDays(ttlDays));
-        } catch (Exception e) {
-            log.warn("{} 캐시 저장 실패(API 결과는 정상 반환): {}", logLabel, e.getMessage());
-        }
     }
 
     private List<List<Double>> emptyMatrix(int n) {
