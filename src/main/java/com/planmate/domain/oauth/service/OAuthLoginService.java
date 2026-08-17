@@ -3,32 +3,24 @@ package com.planmate.domain.oauth.service;
 import com.planmate.domain.oauth.config.OAuthProperties;
 import com.planmate.domain.oauth.dto.OAuthSignupCache;
 import com.planmate.domain.oauth.dto.OAuthUserProfile;
-import com.planmate.domain.oauth.dto.google.GoogleTokenResponse;
-import com.planmate.domain.oauth.dto.google.GoogleUserResponse;
-import com.planmate.domain.oauth.dto.kakao.KakaoTokenResponse;
-import com.planmate.domain.oauth.dto.kakao.KakaoUserResponse;
-import com.planmate.domain.oauth.dto.naver.NaverTokenResponse;
-import com.planmate.domain.oauth.dto.naver.NaverUserResponse;
 import com.planmate.domain.oauth.enums.OAuthProvider;
 import com.planmate.domain.oauth.repository.OAuthLoginCodeRedisRepository;
 import com.planmate.domain.oauth.repository.OAuthSignupRedisRepository;
+import com.planmate.domain.oauth.service.provider.OAuthProfileFetcher;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.internal.outbox.UserOutboxWriter;
 import com.planmate.domain.user.repository.UserRepository;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -39,7 +31,16 @@ public class OAuthLoginService {
     private final OAuthLoginCodeRedisRepository oAuthLoginCodeRedisRepository;
     private final OAuthSignupRedisRepository oAuthSignupRedisRepository;
     private final UserOutboxWriter userOutboxWriter;
-    private final RestTemplate restTemplate;
+    private final OAuthNicknamePolicy nicknamePolicy;
+    private final List<OAuthProfileFetcher> profileFetchers;
+
+    private Map<OAuthProvider, OAuthProfileFetcher> fetchersByProvider;
+
+    @PostConstruct
+    void init() {
+        fetchersByProvider = profileFetchers.stream()
+                .collect(Collectors.toMap(OAuthProfileFetcher::supports, Function.identity()));
+    }
 
     /** 1. 로그인 시작 URL 생성 — state는 Controller가 만든 값을 그대로 받아 모든 provider의 쿼리파라미터에 끼워넣음(CSRF 방어용) */
     @Transactional(readOnly = true)
@@ -72,11 +73,7 @@ public class OAuthLoginService {
     @Transactional
     public String callback(OAuthProvider provider, String code, String state) {
 
-        OAuthUserProfile profile = switch (provider) {
-            case KAKAO -> fetchKakaoProfile(code);
-            case GOOGLE -> fetchGoogleProfile(code);
-            case NAVER -> fetchNaverProfile(code, state);
-        };
+        OAuthUserProfile profile = fetchersByProvider.get(provider).fetch(code, state);
 
         String providerName = provider.name();
         String email = profile.getEmail();
@@ -96,7 +93,7 @@ public class OAuthLoginService {
                 // 변경사항(deletedAt=null)만 먼저 auto-flush해버려서, 닉네임이 아직 안 바뀐 채로 활성화된
                 // 순간적인 DB 상태가 생기고 그 시점에 uk_users_nickname이 위반된다(실제 DB 통합 테스트로 재현 확인).
                 // 닉네임을 먼저 확정한 뒤 restore()+changeNickname()을 연달아 호출해 하나의 UPDATE로 flush되게 한다.
-                String reconfirmedNickname = resolveUniqueNickname(user.getNickname());
+                String reconfirmedNickname = nicknamePolicy.resolveUnique(user.getNickname());
                 user.restore();
                 user.changeNickname(reconfirmedNickname);
                 // 재활성화는 지금까지 아무 알림도 내보내지 않았다 — 탈퇴 상태로 복제돼 있던
@@ -116,8 +113,8 @@ public class OAuthLoginService {
             }
         }
 
-        String sanitized = sanitizeNickname(profile.getNickname());
-        String finalNickname = resolveUniqueNickname(sanitized);
+        String sanitized = nicknamePolicy.sanitize(profile.getNickname());
+        String finalNickname = nicknamePolicy.resolveUnique(sanitized);
 
         OAuthSignupCache cache = new OAuthSignupCache(
                 provider.toUserProvider(),
@@ -160,156 +157,4 @@ public class OAuthLoginService {
                 .toUriString();
     }
 
-    private String sanitizeNickname(String nickname) {
-        if (nickname == null || nickname.isBlank()) {
-            return "user";
-        }
-
-        String cleaned = nickname.trim();
-        cleaned = cleaned.replaceAll("\\s+", "");
-        cleaned = cleaned.replaceAll("[\\p{So}\\p{Cn}]", "");
-        cleaned = cleaned.replaceAll("[^a-zA-Z0-9가-힣]", "");
-
-        if (cleaned.isBlank()) {
-            cleaned = "user";
-        }
-
-        if (cleaned.length() > 20) {
-            cleaned = cleaned.substring(0, 20);
-        }
-
-        return cleaned;
-    }
-
-    private String resolveUniqueNickname(String baseNickname) {
-        if (!userRepository.existsByNickname(baseNickname)) {
-            return baseNickname;
-        }
-
-        int index = 1;
-        String candidate;
-        do {
-            candidate = baseNickname + index;
-            index++;
-        } while (userRepository.existsByNickname(candidate));
-
-        return candidate;
-    }
-
-    /* ================= PROVIDER 구현부 ================= */
-
-    private OAuthUserProfile fetchKakaoProfile(String code) {
-        OAuthProperties.Provider config = oAuthProperties.getProvider(OAuthProvider.KAKAO);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-
-        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("grant_type", "authorization_code");
-        body.add("client_id", config.getClientId());
-        body.add("client_secret", config.getClientSecret());
-        body.add("redirect_uri", config.getRedirectUri());
-        body.add("code", code);
-
-        KakaoTokenResponse token = restTemplate.postForObject(
-                config.getTokenUri(),
-                new HttpEntity<>(body, headers),
-                KakaoTokenResponse.class
-        );
-
-        HttpHeaders infoHeaders = new HttpHeaders();
-        infoHeaders.setBearerAuth(token.getAccessToken());
-
-        ResponseEntity<KakaoUserResponse> response = restTemplate.exchange(
-                config.getUserInfoUri(),
-                HttpMethod.GET,
-                new HttpEntity<>(infoHeaders),
-                KakaoUserResponse.class
-        );
-
-        KakaoUserResponse d = response.getBody();
-
-        return new OAuthUserProfile(
-                String.valueOf(d.getId()),
-                d.getKakaoAccount().getEmail(),
-                d.getKakaoAccount().getProfile().getNickname()
-        );
-    }
-
-    private OAuthUserProfile fetchGoogleProfile(String code) {
-        OAuthProperties.Provider config = oAuthProperties.getProvider(OAuthProvider.GOOGLE);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-
-        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("grant_type", "authorization_code");
-        body.add("client_id", config.getClientId());
-        body.add("client_secret", config.getClientSecret());
-        body.add("redirect_uri", config.getRedirectUri());
-        body.add("code", code);
-
-        GoogleTokenResponse token = restTemplate.postForObject(
-                config.getTokenUri(),
-                new HttpEntity<>(body, headers),
-                GoogleTokenResponse.class
-        );
-
-        HttpHeaders infoHeaders = new HttpHeaders();
-        infoHeaders.setBearerAuth(token.getAccessToken());
-
-        ResponseEntity<GoogleUserResponse> response = restTemplate.exchange(
-                config.getUserInfoUri(),
-                HttpMethod.GET,
-                new HttpEntity<>(infoHeaders),
-                GoogleUserResponse.class
-        );
-
-        GoogleUserResponse d = response.getBody();
-
-        return new OAuthUserProfile(
-                d.getSub(),
-                d.getEmail(),
-                d.getName()
-        );
-    }
-
-    private OAuthUserProfile fetchNaverProfile(String code, String state) {
-        OAuthProperties.Provider config = oAuthProperties.getProvider(OAuthProvider.NAVER);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-
-        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("grant_type", "authorization_code");
-        body.add("client_id", config.getClientId());
-        body.add("client_secret", config.getClientSecret());
-        body.add("redirect_uri", config.getRedirectUri());
-        body.add("code", code);
-        body.add("state", state);
-
-        NaverTokenResponse token = restTemplate.postForObject(
-                config.getTokenUri(),
-                new HttpEntity<>(body, headers),
-                NaverTokenResponse.class
-        );
-
-        HttpHeaders infoHeaders = new HttpHeaders();
-        infoHeaders.setBearerAuth(token.getAccessToken());
-
-        ResponseEntity<NaverUserResponse> response = restTemplate.exchange(
-                config.getUserInfoUri(),
-                HttpMethod.GET,
-                new HttpEntity<>(infoHeaders),
-                NaverUserResponse.class
-        );
-
-        NaverUserResponse.Result r = response.getBody().getResponse();
-
-        return new OAuthUserProfile(
-                r.getId(),
-                r.getEmail(),
-                r.getNickname()
-        );
-    }
 }
