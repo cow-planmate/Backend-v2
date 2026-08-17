@@ -12,6 +12,7 @@ import com.planmate.domain.user.dto.RegisterFcmTokenRequest;
 import com.planmate.domain.user.dto.SavePreferredThemeRequest;
 import com.planmate.domain.user.dto.UserProfileResponse;
 import com.planmate.domain.user.service.UserService;
+import com.planmate.domain.theme.service.UserPreferredThemeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -36,16 +37,17 @@ import java.util.UUID;
 public class UserController {
 
     private final UserService userService;
+    private final UserPreferredThemeService userPreferredThemeService;
 
     @GetMapping("/preferredTheme")
     public ResponseEntity<PreferredThemeListResponse> getPreferredThemes() {
-        return ResponseEntity.ok(userService.getPreferredThemes());
+        return ResponseEntity.ok(userPreferredThemeService.getPreferredThemes());
     }
 
     @PostMapping("/preferredTheme")
     public ResponseEntity<Void> savePreferredThemes(@AuthenticationPrincipal UUID userId,
                                                      @Valid @RequestBody SavePreferredThemeRequest request) {
-        userService.savePreferredThemes(userId, request.preferredThemeIds());
+        userPreferredThemeService.savePreferredThemes(userId, request.preferredThemeIds());
         return ResponseEntity.noContent().build();
     }
 
@@ -103,7 +105,7 @@ public class UserController {
     @PatchMapping("/preferredThemes")
     public ResponseEntity<Void> changePreferredThemes(@AuthenticationPrincipal UUID userId,
                                                        @Valid @RequestBody ChangePreferredThemesRequest request) {
-        userService.changePreferredThemes(userId, request.themeUpdates());
+        userPreferredThemeService.changePreferredThemes(userId, request.themeUpdates());
         return ResponseEntity.noContent().build();
     }
 
