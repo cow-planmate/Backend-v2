@@ -1,54 +1,29 @@
 package com.planmate.domain.plan.service;
 
 import com.planmate.common.exception.domain.AuthenticationRequiredException;
-import com.planmate.common.exception.domain.DestinationNotFoundException;
 import com.planmate.common.exception.domain.PlanAccessDeniedException;
-import com.planmate.common.exception.domain.PlanDuplicateBlockTimeException;
-import com.planmate.common.exception.domain.PlanDuplicateDateException;
-import com.planmate.common.exception.domain.PlanInvalidBlockDateException;
-import com.planmate.common.exception.domain.PlanMemberNotFoundException;
 import com.planmate.common.exception.domain.PlanNotFoundException;
-import com.planmate.common.exception.domain.UserNotFoundException;
 import com.planmate.domain.destination.entity.Destination;
-import com.planmate.domain.destination.repository.DestinationRepository;
-import com.planmate.domain.plan.dto.CreatePlanFrameRequest;
-import com.planmate.domain.plan.dto.CreatePlanFrameResponse;
-import com.planmate.domain.plan.dto.CreatePlanRequest;
-import com.planmate.domain.plan.dto.CreatePlanResponse;
-import com.planmate.domain.plan.dto.DeleteMultiplePlansResponse;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
-import com.planmate.domain.plan.dto.GetEditorsResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.dto.GetShareStatusResponse;
 import com.planmate.domain.plan.dto.PlanFrameDetailDto;
-import com.planmate.domain.plan.dto.PlanFrameDto;
 import com.planmate.domain.plan.dto.TimetableDetailDto;
-import com.planmate.domain.plan.dto.TimetableDto;
 import com.planmate.domain.plan.dto.TimetablePlaceBlockDetailDto;
-import com.planmate.domain.plan.dto.TimetablePlaceBlockDto;
 import com.planmate.domain.plan.entity.Plan;
-import com.planmate.domain.plan.entity.PlanMember;
-import com.planmate.domain.plan.enums.PlanMemberRole;
-import com.planmate.domain.plan.repository.PlanMemberRepository;
 import com.planmate.domain.plan.repository.PlanRepository;
 import com.planmate.domain.plan.validator.PlanAccessValidator;
 import com.planmate.domain.timetable.entity.TimeTable;
 import com.planmate.domain.timetable.entity.TimeTablePlaceBlock;
 import com.planmate.domain.timetable.enums.BlockCategory;
-import com.planmate.domain.timetable.repository.TimeTablePlaceBlockRepository;
-import com.planmate.domain.timetable.repository.TimeTableRepository;
-import com.planmate.domain.user.entity.User;
-import com.planmate.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import sharedsync.cache.PlanCache;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -57,10 +32,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -69,21 +42,10 @@ class PlanServiceTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID PLAN_ID = UUID.randomUUID();
-    private static final UUID PLAN_ID_2 = UUID.randomUUID();
     private static final Integer DESTINATION_ID = 1;
 
     @Mock
     private PlanRepository planRepository;
-    @Mock
-    private PlanMemberRepository planMemberRepository;
-    @Mock
-    private UserRepository userRepository;
-    @Mock
-    private DestinationRepository destinationRepository;
-    @Mock
-    private TimeTableRepository timeTableRepository;
-    @Mock
-    private TimeTablePlaceBlockRepository timeTablePlaceBlockRepository;
     @Mock
     private PlanAccessValidator planAccessValidator;
     @Mock
@@ -109,238 +71,19 @@ class PlanServiceTest {
                 .build();
     }
 
-    private User user() {
-        return User.builder().userId(USER_ID).nickname("tester").build();
-    }
-
     private Plan savedPlanStub() {
         return Plan.builder().planId(PLAN_ID).build();
     }
 
-    // ---------- createPlanFrame (#24) ----------
-
-    @Test
-    @DisplayName("플랜 프레임 생성 성공 - Plan/TimeTable/PlanMember(OWNER) 저장, isShared=true 명시")
-    void createPlanFrame_success() {
-        given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.of(destination()));
-        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
-        given(planRepository.save(any(Plan.class))).willReturn(savedPlanStub());
-
-        CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                DESTINATION_ID,
-                List.of(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 2)), 2, 1);
-
-        CreatePlanFrameResponse response = planService.createPlanFrame(USER_ID, request);
-
-        assertThat(response.planId()).isEqualTo(PLAN_ID);
-
-        ArgumentCaptor<Plan> planCaptor = ArgumentCaptor.forClass(Plan.class);
-        verify(planRepository).save(planCaptor.capture());
-        Plan builtPlan = planCaptor.getValue();
-        assertThat(builtPlan.getPlanName()).isEqualTo("서울");
-        assertThat(builtPlan.isShared()).isTrue();
-        assertThat(builtPlan.getAdultCount()).isEqualTo(2);
-        assertThat(builtPlan.getChildCount()).isEqualTo(1);
-
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<TimeTable>> timeTableCaptor = ArgumentCaptor.forClass(List.class);
-        verify(timeTableRepository).saveAll(timeTableCaptor.capture());
-        List<TimeTable> savedTimeTables = timeTableCaptor.getValue();
-        assertThat(savedTimeTables).hasSize(2);
-        assertThat(savedTimeTables).extracting(TimeTable::getDate)
-                .containsExactly(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 2));
-        assertThat(savedTimeTables).allSatisfy(tt -> {
-            assertThat(tt.getTimeTableStartTime()).isEqualTo(LocalTime.of(9, 0));
-            assertThat(tt.getTimeTableEndTime()).isEqualTo(LocalTime.of(20, 0));
-        });
-
-        ArgumentCaptor<PlanMember> memberCaptor = ArgumentCaptor.forClass(PlanMember.class);
-        verify(planMemberRepository).save(memberCaptor.capture());
-        assertThat(memberCaptor.getValue().getRole()).isEqualTo(PlanMemberRole.OWNER);
-    }
-
-    @Test
-    @DisplayName("플랜 프레임 생성 실패 - 목적지 없음")
-    void createPlanFrame_fail_destinationNotFound() {
-        given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.empty());
-
-        CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                DESTINATION_ID, List.of(LocalDate.of(2026, 8, 1)), 1, 0);
-
-        assertThatThrownBy(() -> planService.createPlanFrame(USER_ID, request))
-                .isInstanceOf(DestinationNotFoundException.class);
-
-        verify(planRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("플랜 프레임 생성 실패 - 유저 없음(방어적 케이스)")
-    void createPlanFrame_fail_userNotFound() {
-        given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.of(destination()));
-        given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
-
-        CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                DESTINATION_ID, List.of(LocalDate.of(2026, 8, 1)), 1, 0);
-
-        assertThatThrownBy(() -> planService.createPlanFrame(USER_ID, request))
-                .isInstanceOf(UserNotFoundException.class);
-
-        verify(planRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("플랜 프레임 생성 실패 - dates에 중복 날짜")
-    void createPlanFrame_fail_duplicateDate() {
-        given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.of(destination()));
-        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
-
-        LocalDate date = LocalDate.of(2026, 8, 1);
-        CreatePlanFrameRequest request = new CreatePlanFrameRequest(
-                DESTINATION_ID, List.of(date, date), 1, 0);
-
-        assertThatThrownBy(() -> planService.createPlanFrame(USER_ID, request))
-                .isInstanceOf(PlanDuplicateDateException.class);
-
-        verify(planRepository, never()).save(any());
-    }
-
-    // ---------- createPlan (#29) ----------
-
-    @Test
-    @DisplayName("플랜 전체 생성 성공 - 블록이 date로 올바른 TimeTable에 매칭됨")
-    void createPlan_success() {
-        given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.of(destination()));
-        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
-        given(planRepository.save(any(Plan.class))).willReturn(savedPlanStub());
-        given(timeTableRepository.saveAll(any())).willAnswer(invocation -> invocation.getArgument(0));
-
-        LocalDate day1 = LocalDate.of(2026, 8, 1);
-        LocalDate day2 = LocalDate.of(2026, 8, 2);
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 2, 0);
-        List<TimetableDto> timetables = List.of(
-                new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)),
-                new TimetableDto(day2, LocalTime.of(9, 0), LocalTime.of(20, 0)));
-        List<TimetablePlaceBlockDto> blocks = List.of(
-                new TimetablePlaceBlockDto(day1, BlockCategory.ATTRACTION, "place-1", "경복궁",
-                        "12", "서울 종로구", null, null, BigDecimal.valueOf(37.57), BigDecimal.valueOf(126.97),
-                        LocalTime.of(10, 0), LocalTime.of(12, 0), "메모"));
-
-        CreatePlanRequest request = new CreatePlanRequest(planFrame, timetables, blocks);
-
-        CreatePlanResponse response = planService.createPlan(USER_ID, request);
-
-        assertThat(response.planId()).isEqualTo(PLAN_ID);
-
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<TimeTablePlaceBlock>> blockCaptor = ArgumentCaptor.forClass(List.class);
-        verify(timeTablePlaceBlockRepository).saveAll(blockCaptor.capture());
-        List<TimeTablePlaceBlock> savedBlocks = blockCaptor.getValue();
-        assertThat(savedBlocks).hasSize(1);
-        assertThat(savedBlocks.get(0).getTimeTable().getDate()).isEqualTo(day1);
-        assertThat(savedBlocks.get(0).getPlaceName()).isEqualTo("경복궁");
-
-        ArgumentCaptor<Plan> planCaptor = ArgumentCaptor.forClass(Plan.class);
-        verify(planRepository).save(planCaptor.capture());
-        assertThat(planCaptor.getValue().isShared()).isTrue();
-
-        verify(planMemberRepository).save(any(PlanMember.class));
-    }
-
-    @Test
-    @DisplayName("플랜 전체 생성 성공 - timetables/timetablePlaceBlocks가 null이어도 정상 처리(원본 호환)")
-    void createPlan_success_withNullLists() {
-        given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.of(destination()));
-        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
-        given(planRepository.save(any(Plan.class))).willReturn(savedPlanStub());
-        given(timeTableRepository.saveAll(any())).willAnswer(invocation -> invocation.getArgument(0));
-
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 1, 0);
-        CreatePlanRequest request = new CreatePlanRequest(planFrame, null, null);
-
-        CreatePlanResponse response = planService.createPlan(USER_ID, request);
-
-        assertThat(response.planId()).isEqualTo(PLAN_ID);
-        verify(timeTablePlaceBlockRepository).saveAll(List.of());
-        verify(planMemberRepository).save(any(PlanMember.class));
-    }
-
-    @Test
-    @DisplayName("플랜 전체 생성 실패 - timetables에 중복 날짜")
-    void createPlan_fail_duplicateDate() {
-        given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.of(destination()));
-        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
-
-        LocalDate day1 = LocalDate.of(2026, 8, 1);
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 1, 0);
-        List<TimetableDto> timetables = List.of(
-                new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)),
-                new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)));
-
-        CreatePlanRequest request = new CreatePlanRequest(planFrame, timetables, null);
-
-        assertThatThrownBy(() -> planService.createPlan(USER_ID, request))
-                .isInstanceOf(PlanDuplicateDateException.class);
-
-        verify(planRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("플랜 전체 생성 실패 - timetablePlaceBlocks 내 동일 (날짜,시작시간) 중복")
-    void createPlan_fail_duplicateBlockTime() {
-        given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.of(destination()));
-        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
-
-        LocalDate day1 = LocalDate.of(2026, 8, 1);
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 1, 0);
-        List<TimetableDto> timetables = List.of(new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)));
-        List<TimetablePlaceBlockDto> blocks = List.of(
-                new TimetablePlaceBlockDto(day1, BlockCategory.ATTRACTION, "p1", "장소1", null, null, null, null, null, null,
-                        LocalTime.of(10, 0), LocalTime.of(11, 0), null),
-                new TimetablePlaceBlockDto(day1, BlockCategory.RESTAURANT, "p2", "장소2", null, null, null, null, null, null,
-                        LocalTime.of(10, 0), LocalTime.of(11, 30), null));
-
-        CreatePlanRequest request = new CreatePlanRequest(planFrame, timetables, blocks);
-
-        assertThatThrownBy(() -> planService.createPlan(USER_ID, request))
-                .isInstanceOf(PlanDuplicateBlockTimeException.class);
-
-        verify(planRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("플랜 전체 생성 실패 - 블록의 날짜가 timetables 목록에 없음")
-    void createPlan_fail_invalidBlockDate() {
-        given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.of(destination()));
-        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
-
-        LocalDate day1 = LocalDate.of(2026, 8, 1);
-        LocalDate day2 = LocalDate.of(2026, 8, 2);
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 1, 0);
-        List<TimetableDto> timetables = List.of(new TimetableDto(day1, LocalTime.of(9, 0), LocalTime.of(20, 0)));
-        List<TimetablePlaceBlockDto> blocks = List.of(
-                new TimetablePlaceBlockDto(day2, BlockCategory.ATTRACTION, "p1", "장소1", null, null, null, null, null, null,
-                        LocalTime.of(10, 0), LocalTime.of(11, 0), null));
-
-        CreatePlanRequest request = new CreatePlanRequest(planFrame, timetables, blocks);
-
-        assertThatThrownBy(() -> planService.createPlan(USER_ID, request))
-                .isInstanceOf(PlanInvalidBlockDateException.class);
-
-        verify(planRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("플랜 전체 생성 실패 - 목적지 없음")
-    void createPlan_fail_destinationNotFound() {
-        given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.empty());
-
-        PlanFrameDto planFrame = new PlanFrameDto(DESTINATION_ID, 1, 0);
-        CreatePlanRequest request = new CreatePlanRequest(planFrame, null, null);
-
-        assertThatThrownBy(() -> planService.createPlan(USER_ID, request))
-                .isInstanceOf(DestinationNotFoundException.class);
-
-        verify(planRepository, never()).save(any());
+    private Plan sharedPlanStub(boolean isShared) {
+        return Plan.builder()
+                .planId(PLAN_ID)
+                .planName("서울 여행")
+                .adultCount(1)
+                .childCount(0)
+                .isShared(isShared)
+                .destination(destination())
+                .build();
     }
 
     // ---------- getPlan (#25) ----------
@@ -452,17 +195,6 @@ class PlanServiceTest {
                 .isInstanceOf(PlanNotFoundException.class);
     }
 
-    private Plan sharedPlanStub(boolean isShared) {
-        return Plan.builder()
-                .planId(PLAN_ID)
-                .planName("서울 여행")
-                .adultCount(1)
-                .childCount(0)
-                .isShared(isShared)
-                .destination(destination())
-                .build();
-    }
-
     // ---------- deletePlan (#28) ----------
 
     @Test
@@ -483,34 +215,6 @@ class PlanServiceTest {
 
         assertThatThrownBy(() -> planService.deletePlan(PLAN_ID))
                 .isInstanceOf(PlanNotFoundException.class);
-    }
-
-    // ---------- deleteMultiplePlans (#30) ----------
-
-    @Test
-    @DisplayName("플랜 다중 삭제 성공 - 소유한 플랜만 삭제되고 deletedPlanIds로 반환")
-    void deleteMultiplePlans_success() {
-        Plan ownedPlan = Plan.builder().planId(PLAN_ID).build();
-        PlanMember ownedMembership = PlanMember.builder().plan(ownedPlan).user(user()).role(PlanMemberRole.OWNER).build();
-        given(planMemberRepository.findByUserUserIdAndRoleAndPlanPlanIdIn(
-                USER_ID, PlanMemberRole.OWNER, List.of(PLAN_ID, PLAN_ID_2)))
-                .willReturn(List.of(ownedMembership));
-
-        DeleteMultiplePlansResponse response = planService.deleteMultiplePlans(USER_ID, List.of(PLAN_ID, PLAN_ID_2));
-
-        assertThat(response.deletedPlanIds()).containsExactly(PLAN_ID);
-        assertThat(ownedPlan.isDeleted()).isTrue();
-    }
-
-    @Test
-    @DisplayName("플랜 다중 삭제 실패 - 소유한 플랜이 하나도 없으면 403")
-    void deleteMultiplePlans_fail_noneOwned() {
-        given(planMemberRepository.findByUserUserIdAndRoleAndPlanPlanIdIn(
-                USER_ID, PlanMemberRole.OWNER, List.of(PLAN_ID)))
-                .willReturn(List.of());
-
-        assertThatThrownBy(() -> planService.deleteMultiplePlans(USER_ID, List.of(PLAN_ID)))
-                .isInstanceOf(PlanAccessDeniedException.class);
     }
 
     // ---------- editPlanName (#31) ----------
@@ -597,95 +301,5 @@ class PlanServiceTest {
 
         assertThatThrownBy(() -> planService.updateShare(PLAN_ID, true))
                 .isInstanceOf(PlanNotFoundException.class);
-    }
-
-    // ---------- resignEditorAccess (#34) ----------
-
-    @Test
-    @DisplayName("본인 편집 권한 포기 성공")
-    void resignEditorAccess_success() {
-        PlanMember member = PlanMember.builder().plan(savedPlanStub()).user(user()).role(PlanMemberRole.EDITOR).build();
-        given(planRepository.existsById(PLAN_ID)).willReturn(true);
-        given(planMemberRepository.findByPlanPlanIdAndUserUserIdAndRole(PLAN_ID, USER_ID, PlanMemberRole.EDITOR))
-                .willReturn(Optional.of(member));
-
-        planService.resignEditorAccess(PLAN_ID, USER_ID);
-
-        verify(planMemberRepository).delete(member);
-    }
-
-    @Test
-    @DisplayName("본인 편집 권한 포기 실패 - 플랜 없음")
-    void resignEditorAccess_fail_planNotFound() {
-        given(planRepository.existsById(PLAN_ID)).willReturn(false);
-
-        assertThatThrownBy(() -> planService.resignEditorAccess(PLAN_ID, USER_ID))
-                .isInstanceOf(PlanNotFoundException.class);
-        verify(planMemberRepository, never()).delete(any());
-    }
-
-    @Test
-    @DisplayName("본인 편집 권한 포기 실패 - 편집자가 아님(소유자 포함)")
-    void resignEditorAccess_fail_notEditor() {
-        given(planRepository.existsById(PLAN_ID)).willReturn(true);
-        given(planMemberRepository.findByPlanPlanIdAndUserUserIdAndRole(PLAN_ID, USER_ID, PlanMemberRole.EDITOR))
-                .willReturn(Optional.empty());
-
-        assertThatThrownBy(() -> planService.resignEditorAccess(PLAN_ID, USER_ID))
-                .isInstanceOf(PlanMemberNotFoundException.class);
-    }
-
-    // ---------- removeEditorAccessByOwner (#35) ----------
-
-    @Test
-    @DisplayName("편집자 권한 박탈 성공")
-    void removeEditorAccessByOwner_success() {
-        UUID targetUserId = UUID.randomUUID();
-        PlanMember member = PlanMember.builder().plan(savedPlanStub()).user(user()).role(PlanMemberRole.EDITOR).build();
-        given(planMemberRepository.findByPlanPlanIdAndUserUserIdAndRole(PLAN_ID, targetUserId, PlanMemberRole.EDITOR))
-                .willReturn(Optional.of(member));
-
-        planService.removeEditorAccessByOwner(PLAN_ID, targetUserId);
-
-        verify(planMemberRepository).delete(member);
-    }
-
-    @Test
-    @DisplayName("편집자 권한 박탈 실패 - 대상이 편집자가 아님(소유자 자기 자신 포함)")
-    void removeEditorAccessByOwner_fail_targetNotEditor() {
-        UUID targetUserId = UUID.randomUUID();
-        given(planMemberRepository.findByPlanPlanIdAndUserUserIdAndRole(PLAN_ID, targetUserId, PlanMemberRole.EDITOR))
-                .willReturn(Optional.empty());
-
-        assertThatThrownBy(() -> planService.removeEditorAccessByOwner(PLAN_ID, targetUserId))
-                .isInstanceOf(PlanMemberNotFoundException.class);
-    }
-
-    // ---------- getEditors (#36) ----------
-
-    @Test
-    @DisplayName("편집자 목록 조회 성공 - EDITOR만 포함, OWNER 제외")
-    void getEditors_success() {
-        User editorUser = User.builder().userId(UUID.randomUUID()).nickname("editor-tester").build();
-        PlanMember editorMember = PlanMember.builder().plan(savedPlanStub()).user(editorUser).role(PlanMemberRole.EDITOR).build();
-        given(planMemberRepository.findByPlanPlanIdAndRole(PLAN_ID, PlanMemberRole.EDITOR))
-                .willReturn(List.of(editorMember));
-
-        GetEditorsResponse response = planService.getEditors(PLAN_ID);
-
-        assertThat(response.editors()).hasSize(1);
-        assertThat(response.editors().get(0).userId()).isEqualTo(editorUser.getUserId());
-        assertThat(response.editors().get(0).nickname()).isEqualTo("editor-tester");
-    }
-
-    @Test
-    @DisplayName("편집자 목록 조회 성공 - 편집자 없으면 빈 리스트")
-    void getEditors_success_empty() {
-        given(planMemberRepository.findByPlanPlanIdAndRole(PLAN_ID, PlanMemberRole.EDITOR))
-                .willReturn(List.of());
-
-        GetEditorsResponse response = planService.getEditors(PLAN_ID);
-
-        assertThat(response.editors()).isEmpty();
     }
 }

@@ -16,6 +16,8 @@ import com.planmate.domain.plan.dto.GetEditorsResponse;
 import com.planmate.domain.plan.dto.GetPlanResponse;
 import com.planmate.domain.plan.dto.GetShareStatusResponse;
 import com.planmate.domain.plan.dto.UpdateShareRequest;
+import com.planmate.domain.plan.service.PlanCreationService;
+import com.planmate.domain.plan.service.PlanMembershipService;
 import com.planmate.domain.plan.service.PlanService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,19 +41,21 @@ import java.util.UUID;
 public class PlanController {
 
     private final PlanService planService;
+    private final PlanCreationService planCreationService;
+    private final PlanMembershipService planMembershipService;
     private final CollaborationRequestService collaborationRequestService;
 
     @PostMapping
     public ResponseEntity<CreatePlanFrameResponse> createPlanFrame(@AuthenticationPrincipal UUID userId,
                                                                      @Valid @RequestBody CreatePlanFrameRequest request) {
-        CreatePlanFrameResponse response = planService.createPlanFrame(userId, request);
+        CreatePlanFrameResponse response = planCreationService.createPlanFrame(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PostMapping("/full")
     public ResponseEntity<CreatePlanResponse> createPlan(@AuthenticationPrincipal UUID userId,
                                                           @Valid @RequestBody CreatePlanRequest request) {
-        CreatePlanResponse response = planService.createPlan(userId, request);
+        CreatePlanResponse response = planCreationService.createPlan(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -77,7 +81,7 @@ public class PlanController {
     public ResponseEntity<DeleteMultiplePlansResponse> deleteMultiplePlans(
             @AuthenticationPrincipal UUID userId,
             @Valid @RequestBody DeleteMultiplePlansRequest request) {
-        DeleteMultiplePlansResponse response = planService.deleteMultiplePlans(userId, request.planIds());
+        DeleteMultiplePlansResponse response = planMembershipService.deleteMultiplePlans(userId, request.planIds());
         return ResponseEntity.ok(response);
     }
 
@@ -102,19 +106,19 @@ public class PlanController {
 
     @DeleteMapping("/{planId}/editor/me")
     public ResponseEntity<Void> resignEditorAccess(@AuthenticationPrincipal UUID userId, @PathVariable UUID planId) {
-        planService.resignEditorAccess(planId, userId);
+        planMembershipService.resignEditorAccess(planId, userId);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{planId}/editors/{targetUserId}")
     public ResponseEntity<Void> removeEditorAccessByOwner(@PathVariable UUID planId, @PathVariable UUID targetUserId) {
-        planService.removeEditorAccessByOwner(planId, targetUserId);
+        planMembershipService.removeEditorAccessByOwner(planId, targetUserId);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{planId}/editors")
     public ResponseEntity<GetEditorsResponse> getEditors(@PathVariable UUID planId) {
-        return ResponseEntity.ok(planService.getEditors(planId));
+        return ResponseEntity.ok(planMembershipService.getEditors(planId));
     }
 
     @PostMapping("/{planId}/invite")
