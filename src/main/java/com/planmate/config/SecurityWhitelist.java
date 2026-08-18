@@ -20,6 +20,7 @@ public final class SecurityWhitelist {
             "/api/plan/*/complete",
             "/api/destination",
             "/api/place",
+            "/api/place/search",
             "/api/weather",
             "/api/beta/feedback",
             // 인증 없이 스크랩 가능해야 하는 프로메테우스. 실질적 접근 제한은 network 레벨

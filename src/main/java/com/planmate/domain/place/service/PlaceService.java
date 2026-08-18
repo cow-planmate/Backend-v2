@@ -2,11 +2,14 @@ package com.planmate.domain.place.service;
 
 import com.planmate.common.exception.domain.DestinationNotFoundException;
 import com.planmate.common.exception.domain.TourApiCallFailedException;
+import com.planmate.common.exception.domain.KakaoLocalNotConfiguredException;
+import com.planmate.common.externalAPI.KakaoLocalClient;
 import com.planmate.common.externalAPI.TourApiClient;
 import com.planmate.common.externalAPI.TourApiClient.AreaBasedListItem;
 import com.planmate.common.externalAPI.TourApiClient.AreaBasedListResult;
 import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
+import com.planmate.domain.place.dto.PlaceKeywordSearchResponse;
 import com.planmate.domain.place.dto.PlaceSearchRequest;
 import com.planmate.domain.place.dto.PlaceSearchResponse;
 import com.planmate.domain.place.dto.PlaceSummaryDto;
@@ -46,9 +49,27 @@ public class PlaceService {
     private final UserPreferredThemeRepository userPreferredThemeRepository;
     private final PreferredThemeLclsSystmCache preferredThemeLclsSystmCache;
     private final TourApiClient tourApiClient;
+    private final KakaoLocalClient kakaoLocalClient;
     private final ExecutorService tourApiExecutor;
 
     @Transactional(readOnly = true)
+    /**
+     * 키워드로 장소를 찾는다 (카카오 로컬).
+     *
+     * TourAPI 기반 {@link #searchPlaces}가 "목적지+카테고리로 둘러보기"라면, 이쪽은
+     * 사용자가 이름을 아는 특정 장소를 집는 용도다. 커뮤니티 장소 추천 글쓰기가 쓴다.
+     */
+    public PlaceKeywordSearchResponse searchByKeyword(String query, Integer size) {
+        if (query == null || query.isBlank()) {
+            return new PlaceKeywordSearchResponse(List.of());
+        }
+        if (!kakaoLocalClient.isConfigured()) {
+            throw new KakaoLocalNotConfiguredException();
+        }
+        int limit = size == null ? 10 : Math.min(Math.max(size, 1), 15);
+        return PlaceKeywordSearchResponse.from(kakaoLocalClient.searchKeyword(query.trim(), limit));
+    }
+
     public PlaceSearchResponse searchPlaces(PlaceSearchRequest request, UUID userId) {
         List<DestinationRegionCode> regionCodes = destinationRegionCodeCache.get(request.destinationId());
         if (regionCodes.isEmpty()) {

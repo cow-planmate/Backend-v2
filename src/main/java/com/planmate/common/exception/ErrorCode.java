@@ -66,6 +66,9 @@ public enum ErrorCode {
 
     // 추천 장소
     TOUR_API_CALL_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "PLACE_001", "외부 관광정보 조회에 실패했습니다."),
+    KAKAO_LOCAL_CALL_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "PLACE_002", "장소 검색에 실패했습니다. 잠시 후 다시 시도해주세요."),
+    // 키가 없으면 카카오가 401을 주는데, 그대로 두면 "검색이 안 된다"로만 보여 원인을 못 찾는다
+    KAKAO_LOCAL_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "PLACE_003", "장소 검색이 설정되지 않았습니다. 서버에 api.kakao.rest-key가 필요합니다."),
     ;
 
     private final HttpStatus httpStatus;
