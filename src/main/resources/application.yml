@@ -71,6 +71,16 @@ spring:
         enable.idempotence: true
         acks: all
 
+  # @Scheduled 기본 스레드 풀은 1개다. 알림 outbox 발행기가 Kafka 응답을 건당 최대 10초씩
+  # 동기 대기하므로(NotificationOutboxPublisher), 브로커가 죽으면 한 사이클이 그 스레드를
+  # 수 분간 붙든다. 풀이 1이면 같은 스레드를 쓰는 SSE 하트비트(30초)까지 멈춰 리버스
+  # 프록시가 멀쩡한 SSE 연결을 끊어버린다 — 브로커 장애가 알림 지연이 아니라 SSE 장애로
+  # 번지는 경로다. 길게 블로킹하는 작업은 outbox 하나뿐이라, 나머지가 항상 돌 여유만 있으면 된다.
+  task:
+    scheduling:
+      pool:
+        size: ${SPRING_TASK_SCHEDULING_POOL_SIZE:4}
+
 notification:
   legacy-delivery:
     # Notification 서비스 컷오버 뒤에는 false. true인 동안은 Backend-v2가 협업 알림을
