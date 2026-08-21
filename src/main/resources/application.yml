@@ -62,6 +62,35 @@ spring:
         master: ${SPRING_DATA_REDIS_SENTINEL_MASTER:}
         nodes: ${SPRING_DATA_REDIS_SENTINEL_NODES:}
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      properties:
+        enable.idempotence: true
+        acks: all
+
+  # @Scheduled 기본 스레드 풀은 1개다. 알림 outbox 발행기가 Kafka 응답을 건당 최대 10초씩
+  # 동기 대기하므로(NotificationOutboxPublisher), 브로커가 죽으면 한 사이클이 그 스레드를
+  # 수 분간 붙든다. 풀이 1이면 같은 스레드를 쓰는 SSE 하트비트(30초)까지 멈춰 리버스
+  # 프록시가 멀쩡한 SSE 연결을 끊어버린다 — 브로커 장애가 알림 지연이 아니라 SSE 장애로
+  # 번지는 경로다. 길게 블로킹하는 작업은 outbox 하나뿐이라, 나머지가 항상 돌 여유만 있으면 된다.
+  task:
+    scheduling:
+      pool:
+        size: ${SPRING_TASK_SCHEDULING_POOL_SIZE:4}
+
+notification:
+  legacy-delivery:
+    # Notification 서비스 컷오버 뒤에는 false. true인 동안은 Backend-v2가 협업 알림을
+    # FCM/SSE로 직접 보내므로 Notification 전달과 동시에 켜면 사용자에게 두 번 간다.
+    enabled: ${NOTIFICATION_LEGACY_DELIVERY_ENABLED:true}
+  kafka:
+    topic: ${NOTIFICATION_TOPIC:planmate.notification.requested.v1}
+  outbox:
+    poll-interval-ms: ${NOTIFICATION_OUTBOX_POLL_INTERVAL_MS:500}
+
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
   access-key: ${MINIO_ACCESS_KEY:minioadmin}
@@ -70,7 +99,9 @@ minio:
   public-url: ${MINIO_PUBLIC_URL:http://localhost:9000}
 
 internal:
-  api-token: ${INTERNAL_API_TOKEN:local-internal-token}
+  # 기본값을 두지 않는다. 이 토큰이 /api/internal/** 와 내부 gRPC 의 유일한 인증이라
+  # 저장소에 적힌 기본값은 곧 공개된 비밀번호다. 미설정이면 InternalTokenGuard 가 기동을 막는다.
+  api-token: ${INTERNAL_API_TOKEN:}
   outbox:
     # 소비자가 따라잡을 수 있는 최대 정지 시간이자, 탈퇴자의 옛 닉네임이 outbox에 남는 최대 기간.
     # 커서가 이 창 밖으로 밀려나면 서버가 전체 스냅샷으로 격하시켜 복구한다(유실 아님).

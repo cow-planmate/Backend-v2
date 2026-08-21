@@ -165,7 +165,7 @@ class InternalUserGrpcServiceTest {
         verifyNoInteractions(queryService);
     }
 
-    // 서블릿 필터(InternalTokenFilter)는 gRPC에 걸리지 않는다. 인터셉터가 유일한 방어선이므로
+    // 서블릿 필터는 gRPC에 걸리지 않는다. 인터셉터가 유일한 방어선이므로
     // 아래 두 테스트가 이 전환에서 가장 중요하다.
 
     @Test

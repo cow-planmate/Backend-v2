@@ -16,9 +16,47 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # 이 저장소의 @SpringBootTest 는 Testcontainers 를 쓰지 않고 localhost 의 Postgres/Redis 에
+    # 붙는다(application.yml 기본값). 러너에 그 둘을 띄워 로컬 개발 환경과 같은 모양을 만든다.
+    # 값은 application.yml 의 기본값과 일치해야 한다 — 다르면 테스트가 붙을 곳을 잃는다.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: planmate
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: "1234"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Dockerfile 은 bootJar -x test 로 빌드하므로 테스트가 여기서만 돈다.
+      # 이 단계가 없으면 컴파일만 되는 이미지가 latest 로 올라가고, Watchtower 가 그걸
+      # 그대로 운영에 밀어 넣는다.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Test
+        run: chmod +x gradlew && ./gradlew --no-daemon test
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

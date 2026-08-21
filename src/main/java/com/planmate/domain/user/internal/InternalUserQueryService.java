@@ -13,7 +13,7 @@ import java.util.UUID;
 /**
  * 내부 서비스(커뮤니티)에 노출할 사용자 정보를 조회한다.
  *
- * HTTP(InternalUserController)와 gRPC(InternalUserGrpcService)가 이 한 곳을 공유한다 —
+ * gRPC(InternalUserGrpcService)가 쓰는 조회 로직 —
  * 두 프로토콜이 공존하는 동안 로직을 복사해두면 한쪽만 고쳐져 서로 다른 값을 내려주는
  * 사고로 이어진다.
  */
