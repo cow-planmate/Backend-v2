@@ -1,6 +1,7 @@
 package com.planmate.domain.auth.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.planmate.common.mail.MailService;
 import com.planmate.domain.auth.dto.EmailVerificationConfirmRequest;
 import com.planmate.domain.auth.dto.EmailVerificationSendRequest;
 import com.planmate.domain.auth.enums.EmailVerificationPurpose;
@@ -17,6 +18,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -39,6 +41,8 @@ class EmailVerificationControllerTest {
     private UserRepository userRepository;
     @Autowired
     private EmailVerificationRedisRepository emailVerificationRedisRepository;
+    @MockitoBean
+    private MailService mailService;
 
     private String signUpEmail;
 

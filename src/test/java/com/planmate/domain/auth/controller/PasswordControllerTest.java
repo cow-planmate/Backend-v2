@@ -1,6 +1,7 @@
 package com.planmate.domain.auth.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.planmate.common.mail.MailService;
 import com.planmate.domain.auth.dto.ChangePasswordRequest;
 import com.planmate.domain.auth.dto.SendTempPasswordRequest;
 import com.planmate.domain.auth.dto.VerifyPasswordRequest;
@@ -21,6 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +57,8 @@ class PasswordControllerTest {
 
     @Autowired
     private JwtSigningKeys jwtSigningKeys;
+    @MockitoBean
+    private MailService mailService;
 
     private User testUser;
     private String accessToken;
