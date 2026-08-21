@@ -9,7 +9,7 @@ import java.util.Set;
 /**
  * 내부 공유 토큰이 실제로 "비밀"인지 기동 시점에 확인한다.
  *
- * 이 토큰 하나가 {@code /api/internal/**} 와 내부 gRPC 사용자 API 전체의 유일한 인증이다.
+ * 이 토큰 하나가 내부 gRPC 사용자 API 전체의 유일한 인증이다.
  * 예전에는 application.yml 에 {@code local-internal-token} 기본값이 있었고 운영 compose 도
  * 같은 값을 그대로 박아 두었기 때문에, 공개 저장소를 읽은 사람이면 누구나 내부 API 를
  * 호출할 수 있었다. 기본값을 지우는 것만으로는 부족하다 — 값이 비면 filter/interceptor 의

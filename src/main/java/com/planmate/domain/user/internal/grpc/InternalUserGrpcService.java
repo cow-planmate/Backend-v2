@@ -25,7 +25,7 @@ import java.util.UUID;
  * 스트림 세션의 전송과 커서 전진은 UserChangeStreamPoller가 맡는다.
  *
  * 인증은 common/internal/grpc의 InternalTokenServerInterceptor가 담당한다.
- * 서블릿 필터(InternalTokenFilter)는 gRPC 요청에 걸리지 않는다.
+ * 서블릿 필터는 gRPC 요청에 걸리지 않는다.
  */
 @GrpcService
 @RequiredArgsConstructor

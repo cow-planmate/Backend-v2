@@ -11,10 +11,11 @@ import org.springframework.beans.factory.annotation.Value;
 /**
  * 내부 gRPC 호출의 공유 토큰 인증.
  *
- * HTTP 쪽 InternalTokenFilter는 <b>서블릿 필터라 gRPC 요청에 걸리지 않는다.</b>
+ * 서블릿 필터는 gRPC 요청에 걸리지 않으므로, 내부 API 인증은 <b>이 인터셉터가 유일하다.</b>
+ * (HTTP {@code /api/internal/**} 는 호출부가 모두 gRPC 로 넘어간 뒤 제거했다.)
  * 이 인터셉터가 없으면 내부 사용자 API가 무인증으로 열린다.
  *
- * 검증 값은 InternalTokenFilter와 같은 {@code internal.api-token} 프로퍼티에서 읽어
+ * 검증 값은 {@code internal.api-token} 프로퍼티에서 읽어
  * 두 프로토콜의 토큰이 갈라지지 않게 한다.
  */
 @GrpcGlobalServerInterceptor
