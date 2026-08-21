@@ -2,6 +2,7 @@ package com.planmate.domain.place.service;
 
 import com.planmate.common.exception.domain.DestinationNotFoundException;
 import com.planmate.common.exception.domain.TourApiCallFailedException;
+import com.planmate.common.externalAPI.KakaoLocalClient;
 import com.planmate.common.externalAPI.TourApiClient;
 import com.planmate.common.externalAPI.TourApiClient.AreaBasedListItem;
 import com.planmate.common.externalAPI.TourApiClient.AreaBasedListResult;
@@ -53,6 +54,8 @@ class PlaceServiceTest {
     private PreferredThemeLclsSystmCache preferredThemeLclsSystmCache;
     @Mock
     private TourApiClient tourApiClient;
+    @Mock
+    private KakaoLocalClient kakaoLocalClient;
 
     private ExecutorService executorService;
     private PlaceService placeService;
@@ -61,7 +64,7 @@ class PlaceServiceTest {
     void setUp() {
         executorService = Executors.newFixedThreadPool(4);
         placeService = new PlaceService(destinationRegionCodeCache, userPreferredThemeRepository,
-                preferredThemeLclsSystmCache, tourApiClient, executorService);
+                preferredThemeLclsSystmCache, tourApiClient, kakaoLocalClient, executorService);
     }
 
     @AfterEach

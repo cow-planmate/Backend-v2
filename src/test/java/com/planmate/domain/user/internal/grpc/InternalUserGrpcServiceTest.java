@@ -240,8 +240,6 @@ class InternalUserGrpcServiceTest {
         given(userRepository.findSnapshotPageIncludingDeleted(any(UUID.class), anyInt()))
                 .willReturn(List.of(snapshotUser("스냅닉")))
                 .willReturn(List.of());
-        given(outboxRepository.findAfter(eq(5L), anyInt())).willReturn(List.of());
-
         LinkedBlockingQueue<WatchUserChangesResponse> received = subscribe(
                 WatchUserChangesRequest.newBuilder().setFromSequence(0L).build());
 
