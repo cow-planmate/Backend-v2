@@ -109,6 +109,10 @@ dependencies {
     // MinIO (프로필 이미지 저장)
     implementation 'io.minio:minio:8.5.12'
 
+    // Google Places 사진 WebP 변환 (06_키워드검색_API_인프라설계.md 4-2절)
+    implementation 'com.sksamuel.scrimage:scrimage-core:4.1.3'
+    implementation 'com.sksamuel.scrimage:scrimage-webp:4.1.3'
+
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
