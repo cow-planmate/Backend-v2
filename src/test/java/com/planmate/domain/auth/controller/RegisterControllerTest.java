@@ -22,7 +22,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.crypto.SecretKey;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Date;
@@ -122,14 +121,15 @@ class RegisterControllerTest {
     @Test
     @DisplayName("회원가입 실패 - signupToken이 실제로 만료되면 401, AUTH_002(설계문서는 AUTH_001로 뭉뚱그려놨지만 실제 코드는 별도 응답)")
     void register_fail_expiredSignupToken_realToken() throws Exception {
-        // 서명 키는 JwtSigningKeys 가 들고 있다(HS256 대칭키 ↔ RS256 개인키 전환 때문).
-        SecretKey key = (SecretKey) ReflectionTestUtils.getField(jwtSigningKeys, "hmacKey");
+        // 서명 키는 JwtSigningKeys 가 들고 있다. RS256 이므로 검증자가 JWKS 에서 키를 고를 수
+        // 있도록 kid 도 함께 넣는다 — 앱이 발급하는 토큰과 같은 모양이어야 만료만 다른 조건이 된다.
         String expiredToken = Jwts.builder()
+                .header().keyId(jwtSigningKeys.getKeyId()).and()
                 .subject("expired-" + UUID.randomUUID() + "@example.com")
                 .claim("purpose", EmailVerificationPurpose.SIGN_UP.name())
                 .issuedAt(Date.from(Instant.now().minusSeconds(700)))
                 .expiration(Date.from(Instant.now().minusSeconds(100)))
-                .signWith(key)
+                .signWith(jwtSigningKeys.getPrivateKey())
                 .compact();
 
         RegisterRequest request = new RegisterRequest(

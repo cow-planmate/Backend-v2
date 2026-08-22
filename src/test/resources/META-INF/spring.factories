@@ -1,0 +1,4 @@
+# 테스트 클래스패스 전용. JwtSigningKeys 가 RS256 개인키를 요구하므로 모든 테스트 컨텍스트에
+# 생성 키를 넣어 준다. 자세한 이유는 TestJwtKeyEnvironmentPostProcessor 참고.
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.planmate.security.TestJwtKeyEnvironmentPostProcessor
