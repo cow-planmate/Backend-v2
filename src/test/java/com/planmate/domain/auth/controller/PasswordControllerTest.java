@@ -26,7 +26,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.crypto.SecretKey;
 import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
@@ -173,14 +172,15 @@ class PasswordControllerTest {
     @Test
     @DisplayName("임시 비밀번호 발송 실패 - verificationToken이 실제로 만료되면 401, AUTH_002(무효 토큰과 다른 코드)")
     void sendTempPassword_fail_expiredToken() throws Exception {
-        // 서명 키는 JwtSigningKeys 가 들고 있다(HS256 대칭키 ↔ RS256 개인키 전환 때문).
-        SecretKey key = (SecretKey) ReflectionTestUtils.getField(jwtSigningKeys, "hmacKey");
+        // 서명 키는 JwtSigningKeys 가 들고 있다. RS256 이므로 검증자가 JWKS 에서 키를 고를 수
+        // 있도록 kid 도 함께 넣는다 — 앱이 발급하는 토큰과 같은 모양이어야 만료만 다른 조건이 된다.
         String expiredToken = Jwts.builder()
+                .header().keyId(jwtSigningKeys.getKeyId()).and()
                 .subject(testUser.getEmail())
                 .claim("purpose", EmailVerificationPurpose.RESET_PASSWORD.name())
                 .issuedAt(Date.from(Instant.now().minusSeconds(700)))
                 .expiration(Date.from(Instant.now().minusSeconds(100)))
-                .signWith(key)
+                .signWith(jwtSigningKeys.getPrivateKey())
                 .compact();
 
         mockMvc.perform(post("/api/auth/password/email")

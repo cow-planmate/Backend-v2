@@ -136,7 +136,7 @@ firebase:
   service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
 
 oauth:
-  # 로컬은 application-secret.yml(gitignore)이 이 값들을 그대로 덮어쓴다 — import된 설정이 우선순위가 높음(jwt.secret과 동일한 패턴).
+  # 로컬은 application-secret.yml(gitignore)이 이 값들을 그대로 덮어쓴다 — import된 설정이 우선순위가 높다.
   # 운영은 application-secret.yml이 이미지에 포함되지 않으므로, 여기 환경변수가 유일한 공급처다.
   frontend-redirect-uri: ${OAUTH_FRONTEND_REDIRECT_URI:http://localhost:5173/oauth/callback}
   provider:
@@ -166,13 +166,13 @@ oauth:
       scope: name,email
 
 jwt:
-  # RS256 서명용 PKCS#8 개인키(PEM). 이 서비스만 갖는다 — 커뮤니티는 JWKS 로 공개키만 받는다.
-  # 비어 있으면 예전처럼 HS256(대칭키)으로 발급한다. 코드 배포와 키 투입을 분리하기 위한 것이며,
-  # 그 상태에서는 기동 로그에 경고가 남는다. 키 생성은 deploy/gen-jwt-key.sh 참고.
+  # RS256 서명용 PKCS#8 개인키(PEM). 이 서비스만 갖는다 — 검증자들은 JWKS 로 공개키만 받는다.
+  # 필수다. 없으면 JwtSigningKeys 가 기동을 막는다(예전에는 HS256 발급으로 조용히 떨어졌다).
+  # 키 생성은 deploy/gen-jwt-key.sh 참고.
   private-key: ${JWT_PRIVATE_KEY:}
-  # 전환 기간 동안 배포 전에 발급된 HS256 토큰을 검증하는 데 계속 쓰인다.
-  # refresh 토큰이 7일짜리라 그만큼 지나야 제거할 수 있다.
-  secret: ${JWT_SECRET}
+  # jwt.secret 은 2026-08-22 에 제거했다. 전환기에 옛 HS256 토큰을 검증하려고 남겼던
+  # 값인데, 유예(refresh 7일)가 끝난 뒤에도 주입되고 있어서 그 값을 아는 누구나 토큰을
+  # 위조할 수 있었다. 운영 .env 의 JWT_SECRET 도 함께 지울 것.
   access-token-expiry-seconds: ${JWT_ACCESS_EXPIRY:900}
   refresh-token-expiry-seconds: ${JWT_REFRESH_EXPIRY:604800}
 

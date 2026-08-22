@@ -30,14 +30,11 @@ public class JwksController {
 
     @GetMapping("/.well-known/jwks.json")
     public ResponseEntity<Map<String, Object>> jwks() {
-        List<Map<String, Object>> keys = signingKeys.isAsymmetric()
-                ? List.of(Jwks.builder()
-                        .key(signingKeys.getPublicKey())   // 반드시 공개키
-                        .idFromThumbprint()
-                        .build())
-                // 아직 RS256 으로 전환하기 전 — 빈 목록을 준다. 404 로 두면 검증자가
-                // "서버 장애"와 "아직 전환 전"을 구분하지 못한다.
-                : List.of();
+        // 키가 없으면 애초에 기동하지 않으므로(JwtSigningKeys) 항상 한 개다.
+        List<Map<String, Object>> keys = List.of(Jwks.builder()
+                .key(signingKeys.getPublicKey())   // 반드시 공개키
+                .idFromThumbprint()
+                .build());
 
         return ResponseEntity.ok()
                 // 키는 거의 안 바뀐다. 검증자가 매 요청 받아가지 않도록 캐시를 허용하되,
