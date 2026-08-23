@@ -112,6 +112,10 @@ public class UserChangeStreamPoller {
             List<UserOutboxEntry> batch =
                     outboxRepository.findAfter(session.cursor(), properties.getBatchSize());
             if (batch.isEmpty()) {
+                // 더 보낼 게 없다 = 소비자가 따라잡았다. 여기서 마커를 한 번 보내야 소비자가
+                // 모아둔 것을 반영한다 — 안 보내면 200건이 쌓일 때까지 버퍼에 갇힌다.
+                // 이번 구간에 보낸 게 없으면 sendCaughtUp() 이 알아서 아무것도 안 한다.
+                session.sendCaughtUp();
                 return;
             }
             for (UserOutboxEntry entry : batch) {
