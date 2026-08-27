@@ -115,6 +115,23 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("로그인 실패 - 영구 정지(until=null로 정지)는 sentinel이 실제 DB를 왕복해도 '영구 정지' 메시지로 나온다(만료일 대신)")
+    void login_fail_accountSuspended_permanent() throws Exception {
+        testUser.suspend(null, "심각한 위반");
+        userRepository.saveAndFlush(testUser);
+        entityManager.clear();
+
+        LoginRequest request = new LoginRequest(testUser.getEmail(), RAW_PASSWORD);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_009"))
+                .andExpect(jsonPath("$.message").value("영구 정지된 계정입니다. 사유: 심각한 위반"));
+    }
+
+    @Test
     @DisplayName("로그인 검증 실패 - 이메일 형식 위반 시 400, COMMON_001")
     void login_validationFailure_invalidEmail() throws Exception {
         LoginRequest request = new LoginRequest("not-an-email", RAW_PASSWORD);
