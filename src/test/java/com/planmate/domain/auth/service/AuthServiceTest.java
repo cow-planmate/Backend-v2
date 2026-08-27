@@ -1,5 +1,6 @@
 package com.planmate.domain.auth.service;
 
+import com.planmate.common.exception.domain.AccountSuspendedException;
 import com.planmate.common.exception.domain.InvalidCredentialsException;
 import com.planmate.common.exception.domain.InvalidTokenException;
 import com.planmate.common.exception.domain.UserNotFoundException;
@@ -21,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -110,6 +112,30 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("로그인 실패 - 정지된 계정(비밀번호는 맞음) - AccountSuspendedException")
+    void login_fail_accountSuspended() {
+        user.suspend(LocalDateTime.now().plusDays(3), "약관 위반");
+        given(userRepository.findLocalByEmail(EMAIL)).willReturn(Optional.of(user));
+        given(passwordEncoder.matches(PASSWORD, user.getPassword())).willReturn(true);
+
+        assertThatThrownBy(() -> authService.login(EMAIL, PASSWORD))
+                .isInstanceOf(AccountSuspendedException.class);
+
+        verify(refreshTokenRedisRepository, never()).save(anyString(), eq(userId), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("로그인 성공 - 비밀번호가 틀리면 정지 여부와 무관하게 InvalidCredentialsException(정지 사실이 새지 않음)")
+    void login_fail_passwordMismatch_evenIfSuspended() {
+        user.suspend(LocalDateTime.now().plusDays(3), "약관 위반");
+        given(userRepository.findLocalByEmail(EMAIL)).willReturn(Optional.of(user));
+        given(passwordEncoder.matches(PASSWORD, user.getPassword())).willReturn(false);
+
+        assertThatThrownBy(() -> authService.login(EMAIL, PASSWORD))
+                .isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
     @DisplayName("로그아웃 - refreshToken이 있으면 Redis에서 삭제")
     void logout_withToken_deletesFromRedis() {
         authService.logout("refresh-token");
@@ -155,5 +181,16 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.reissue("refresh-token"))
                 .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("재발급 실패 - 로그인 후 정지된 계정(리프레시 토큰은 살아있어도 재발급은 막힘) - AccountSuspendedException")
+    void reissue_fail_accountSuspended() {
+        user.suspend(LocalDateTime.now().plusDays(3), "약관 위반");
+        given(refreshTokenRedisRepository.findUserId("refresh-token")).willReturn(Optional.of(userId));
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.reissue("refresh-token"))
+                .isInstanceOf(AccountSuspendedException.class);
     }
 }
