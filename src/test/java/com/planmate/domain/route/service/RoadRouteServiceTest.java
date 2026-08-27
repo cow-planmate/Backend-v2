@@ -2,7 +2,10 @@ package com.planmate.domain.route.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.planmate.common.externalAPI.OsrmRouting;
+import com.planmate.common.externalAPI.OsrmRouting.RouteAlternative;
+import com.planmate.common.externalAPI.OsrmRouting.RouteStep;
 import com.planmate.common.externalAPI.OsrmRouting.RoutingResult;
+import com.planmate.domain.route.dto.RouteLegDto;
 import com.planmate.domain.route.dto.RoutePointDto;
 import com.planmate.domain.route.dto.RouteResponse;
 import com.planmate.domain.route.dto.RouteTableResponse;
@@ -71,13 +74,13 @@ class RoadRouteServiceTest {
     void getRoute_cacheMiss_callsOsrmAndCaches() throws Exception {
         RoutePointDto a = point(37.5, 127.0, "A");
         RoutePointDto b = point(37.6, 127.1, "B");
-        RoutingResult leg = new RoutingResult(List.of(a, b), 1000L, 120L);
+        RoutingResult leg = new RoutingResult(List.of(a, b), 1000L, 120L, List.of(), List.of());
 
         given(routeCacheRepository.findByFromKeyAndToKeyAndMode("P:A", "P:B", RouteCacheMode.DRIVING))
                 .willReturn(Optional.empty());
-        given(osrmRouting.getRoute(List.of(a, b))).willReturn(leg);
+        given(osrmRouting.getRoute(List.of(a, b), "driving")).willReturn(leg);
 
-        RouteResponse response = roadRouteService.getRoute(List.of(a, b));
+        RouteResponse response = roadRouteService.getRoute(List.of(a, b), "driving");
 
         assertThat(response.getDistance()).isEqualTo(1000L);
         assertThat(response.getDuration()).isEqualTo(120L);
@@ -98,17 +101,17 @@ class RoadRouteServiceTest {
     void getRoute_cacheHit_doesNotCallOsrm() throws Exception {
         RoutePointDto a = point(37.5, 127.0, "A");
         RoutePointDto b = point(37.6, 127.1, "B");
-        RoutingResult cached = new RoutingResult(List.of(a, b), 500L, 60L);
+        RoutingResult cached = new RoutingResult(List.of(a, b), 500L, 60L, List.of(), List.of());
         String payload = objectMapper.writeValueAsString(cached);
 
         given(routeCacheRepository.findByFromKeyAndToKeyAndMode("P:A", "P:B", RouteCacheMode.DRIVING))
                 .willReturn(Optional.of(cacheRow(payload)));
 
-        RouteResponse response = roadRouteService.getRoute(List.of(a, b));
+        RouteResponse response = roadRouteService.getRoute(List.of(a, b), "driving");
 
         assertThat(response.getDistance()).isEqualTo(500L);
         assertThat(response.getDuration()).isEqualTo(60L);
-        verify(osrmRouting, never()).getRoute(any());
+        verify(osrmRouting, never()).getRoute(any(), anyString());
     }
 
     @Test
@@ -116,7 +119,7 @@ class RoadRouteServiceTest {
     void getRoute_expiredCache_callsOsrmAgain() throws Exception {
         RoutePointDto a = point(37.5, 127.0, "A");
         RoutePointDto b = point(37.6, 127.1, "B");
-        RoutingResult stale = new RoutingResult(List.of(a, b), 999L, 999L);
+        RoutingResult stale = new RoutingResult(List.of(a, b), 999L, 999L, List.of(), List.of());
         RouteCache expired = RouteCache.builder()
                 .routeCacheId(1L)
                 .fromKey("P:A")
@@ -125,16 +128,16 @@ class RoadRouteServiceTest {
                 .responsePayload(objectMapper.writeValueAsString(stale))
                 .expiredAt(LocalDateTime.now().minusDays(1)) // 이미 만료됨
                 .build();
-        RoutingResult fresh = new RoutingResult(List.of(a, b), 1000L, 120L);
+        RoutingResult fresh = new RoutingResult(List.of(a, b), 1000L, 120L, List.of(), List.of());
 
         given(routeCacheRepository.findByFromKeyAndToKeyAndMode("P:A", "P:B", RouteCacheMode.DRIVING))
                 .willReturn(Optional.of(expired));
-        given(osrmRouting.getRoute(List.of(a, b))).willReturn(fresh);
+        given(osrmRouting.getRoute(List.of(a, b), "driving")).willReturn(fresh);
 
-        RouteResponse response = roadRouteService.getRoute(List.of(a, b));
+        RouteResponse response = roadRouteService.getRoute(List.of(a, b), "driving");
 
         assertThat(response.getDistance()).isEqualTo(1000L);
-        verify(osrmRouting).getRoute(List.of(a, b));
+        verify(osrmRouting).getRoute(List.of(a, b), "driving");
     }
 
     @Test
@@ -144,10 +147,10 @@ class RoadRouteServiceTest {
         RoutePointDto b = point(37.654321, 127.654321, null);
         given(routeCacheRepository.findByFromKeyAndToKeyAndMode(anyString(), anyString(), eq(RouteCacheMode.DRIVING)))
                 .willReturn(Optional.empty());
-        given(osrmRouting.getRoute(List.of(a, b)))
-                .willReturn(new RoutingResult(List.of(a, b), 100L, 10L));
+        given(osrmRouting.getRoute(List.of(a, b), "driving"))
+                .willReturn(new RoutingResult(List.of(a, b), 100L, 10L, List.of(), List.of()));
 
-        roadRouteService.getRoute(List.of(a, b));
+        roadRouteService.getRoute(List.of(a, b), "driving");
 
         verify(routeCacheRepository).findByFromKeyAndToKeyAndMode(
                 "C:37.12346,127.12346", "C:37.65432,127.65432", RouteCacheMode.DRIVING);
@@ -160,9 +163,9 @@ class RoadRouteServiceTest {
         RoutePointDto b = point(37.6, 127.1, "B");
         given(routeCacheRepository.findByFromKeyAndToKeyAndMode(anyString(), anyString(), any()))
                 .willReturn(Optional.empty());
-        given(osrmRouting.getRoute(List.of(a, b))).willReturn(null);
+        given(osrmRouting.getRoute(List.of(a, b), "driving")).willReturn(null);
 
-        RouteResponse response = roadRouteService.getRoute(List.of(a, b));
+        RouteResponse response = roadRouteService.getRoute(List.of(a, b), "driving");
 
         assertThat(response.getDistance()).isZero();
         assertThat(response.getDuration()).isZero();
@@ -180,12 +183,12 @@ class RoadRouteServiceTest {
 
         given(routeCacheRepository.findByFromKeyAndToKeyAndMode(anyString(), anyString(), any()))
                 .willReturn(Optional.empty());
-        given(osrmRouting.getRoute(List.of(a, b)))
-                .willReturn(new RoutingResult(List.of(a, mid1, b), 100L, 10L));
-        given(osrmRouting.getRoute(List.of(b, c)))
-                .willReturn(new RoutingResult(List.of(b, mid2, c), 200L, 20L));
+        given(osrmRouting.getRoute(List.of(a, b), "driving"))
+                .willReturn(new RoutingResult(List.of(a, mid1, b), 100L, 10L, List.of(), List.of()));
+        given(osrmRouting.getRoute(List.of(b, c), "driving"))
+                .willReturn(new RoutingResult(List.of(b, mid2, c), 200L, 20L, List.of(), List.of()));
 
-        RouteResponse response = roadRouteService.getRoute(List.of(a, b, c));
+        RouteResponse response = roadRouteService.getRoute(List.of(a, b, c), "driving");
 
         assertThat(response.getPath()).containsExactly(a, mid1, b, mid2, c); // b(경계점) 중복 없음
         assertThat(response.getDistance()).isEqualTo(300L);
@@ -201,8 +204,8 @@ class RoadRouteServiceTest {
 
         given(routeCacheRepository.findByFromKeyAndToKeyAndMode(anyString(), anyString(), eq(RouteCacheMode.DRIVING)))
                 .willReturn(Optional.empty());
-        given(osrmRouting.getRoute(List.of(a, b))).willReturn(new RoutingResult(List.of(a, b), 100L, 10L));
-        given(osrmRouting.getRoute(List.of(b, c))).willReturn(new RoutingResult(List.of(b, c), 200L, 20L));
+        given(osrmRouting.getRoute(List.of(a, b), "driving")).willReturn(new RoutingResult(List.of(a, b), 100L, 10L, List.of(), List.of()));
+        given(osrmRouting.getRoute(List.of(b, c), "driving")).willReturn(new RoutingResult(List.of(b, c), 200L, 20L, List.of(), List.of()));
 
         RouteTableResponse response = roadRouteService.getTable(List.of(a, b, c), "driving");
 
@@ -221,12 +224,89 @@ class RoadRouteServiceTest {
         RoutePointDto b = point(37.1, 127.1, "B");
         given(routeCacheRepository.findByFromKeyAndToKeyAndMode("P:A", "P:B", RouteCacheMode.DRIVING))
                 .willReturn(Optional.empty());
-        given(osrmRouting.getRoute(List.of(a, b))).willReturn(new RoutingResult(List.of(a, b), 100L, 10L));
+        given(osrmRouting.getRoute(List.of(a, b), "driving")).willReturn(new RoutingResult(List.of(a, b), 100L, 10L, List.of(), List.of()));
 
         roadRouteService.getTable(List.of(a, b), "driving");
 
         // table 미스 시에도 /table이 아니라 /route를 호출해 path까지 채운 캐시를 남긴다
-        verify(osrmRouting).getRoute(List.of(a, b));
+        verify(osrmRouting).getRoute(List.of(a, b), "driving");
         verify(routeCacheRepository).upsert(eq("P:A"), eq("P:B"), eq("driving"), anyString(), any());
+    }
+    @Test
+    @DisplayName("getRoute - foot 프로필이면 OSRM에 foot으로 요청하고 foot 캐시 행을 쓴다")
+    void getRoute_footProfile_usesFootProfileAndCache() {
+        RoutePointDto a = point(37.5, 127.0, "A");
+        RoutePointDto b = point(37.6, 127.1, "B");
+        given(routeCacheRepository.findByFromKeyAndToKeyAndMode("P:A", "P:B", RouteCacheMode.FOOT))
+                .willReturn(Optional.empty());
+        given(osrmRouting.getRoute(List.of(a, b), "foot"))
+                .willReturn(new RoutingResult(List.of(a, b), 800L, 600L, List.of(), List.of()));
+
+        RouteResponse response = roadRouteService.getRoute(List.of(a, b), "foot");
+
+        assertThat(response.getProfile()).isEqualTo("foot");
+        assertThat(response.getDuration()).isEqualTo(600L);
+        verify(osrmRouting).getRoute(List.of(a, b), "foot");
+        verify(routeCacheRepository).upsert(eq("P:A"), eq("P:B"), eq("foot"), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("getTable - foot 프로필이면 driving이 아닌 foot 결과로 매트릭스를 채운다")
+    void getTable_footProfile_doesNotReuseDrivingResult() {
+        RoutePointDto a = point(37.0, 127.0, "A");
+        RoutePointDto b = point(37.1, 127.1, "B");
+        given(routeCacheRepository.findByFromKeyAndToKeyAndMode("P:A", "P:B", RouteCacheMode.FOOT))
+                .willReturn(Optional.empty());
+        given(osrmRouting.getRoute(List.of(a, b), "foot"))
+                .willReturn(new RoutingResult(List.of(a, b), 900L, 700L, List.of(), List.of()));
+
+        RouteTableResponse response = roadRouteService.getTable(List.of(a, b), "foot");
+
+        assertThat(response.getProfile()).isEqualTo("foot");
+        assertThat(response.getDurations().get(0).get(1)).isEqualTo(700.0);
+        verify(osrmRouting).getRoute(List.of(a, b), "foot");
+    }
+
+    @Test
+    @DisplayName("getRoute - OSRM step을 한국어 안내 문구가 채워진 leg로 변환한다")
+    void getRoute_convertsStepsIntoKoreanInstructions() {
+        RoutePointDto a = point(37.0, 127.0, "A");
+        RoutePointDto b = point(37.1, 127.1, "B");
+        RouteStep step = new RouteStep(120L, 30L, "세종대로", "turn", "right", null, a);
+        given(routeCacheRepository.findByFromKeyAndToKeyAndMode(anyString(), anyString(), any()))
+                .willReturn(Optional.empty());
+        given(osrmRouting.getRoute(List.of(a, b), "driving"))
+                .willReturn(new RoutingResult(List.of(a, b), 100L, 10L, List.of(step),
+                        List.of(new RouteAlternative(List.of(a, b), 150L, 12L))));
+
+        RouteResponse response = roadRouteService.getRoute(List.of(a, b), "driving");
+
+        assertThat(response.getLegs()).hasSize(1);
+        RouteLegDto leg = response.getLegs().get(0);
+        assertThat(leg.getFromIndex()).isZero();
+        assertThat(leg.getToIndex()).isEqualTo(1);
+        assertThat(leg.getSteps()).hasSize(1);
+        assertThat(leg.getSteps().get(0).getInstruction()).isEqualTo("세종대로 방면으로 우회전");
+        assertThat(leg.getAlternatives()).hasSize(1);
+        assertThat(leg.getAlternatives().get(0).getDuration()).isEqualTo(12L);
+    }
+
+    @Test
+    @DisplayName("getRoute - steps가 없는 구 스키마 캐시는 미스로 보고 OSRM을 다시 호출한다")
+    void getRoute_legacyCacheWithoutSteps_refetches() throws Exception {
+        RoutePointDto a = point(37.5, 127.0, "A");
+        RoutePointDto b = point(37.6, 127.1, "B");
+        // steps/alternatives 필드가 추가되기 전 형태로 저장된 payload
+        String legacyPayload = "{\"path\":[],\"distance\":500,\"duration\":60}";
+
+        given(routeCacheRepository.findByFromKeyAndToKeyAndMode("P:A", "P:B", RouteCacheMode.DRIVING))
+                .willReturn(Optional.of(cacheRow(legacyPayload)));
+        given(osrmRouting.getRoute(List.of(a, b), "driving"))
+                .willReturn(new RoutingResult(List.of(a, b), 1000L, 120L, List.of(), List.of()));
+
+        RouteResponse response = roadRouteService.getRoute(List.of(a, b), "driving");
+
+        assertThat(response.getDistance()).isEqualTo(1000L);
+        verify(osrmRouting).getRoute(List.of(a, b), "driving");
     }
 }

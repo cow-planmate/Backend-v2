@@ -81,6 +81,24 @@ class RouteControllerTest {
             "{\"code\":\"Ok\",\"routes\":[{\"geometry\":{\"coordinates\":"
                     + "[[127.0,37.5],[127.05,37.55],[127.1,37.6]]},\"distance\":1200,\"duration\":222.0}]}";
 
+    private static final String OSRM_ROUTE_WITH_STEPS_JSON =
+            "{\"code\":\"Ok\",\"routes\":["
+                    + "{\"geometry\":{\"coordinates\":[[127.0,37.5],[127.1,37.6]]},"
+                    + "\"distance\":1200,\"duration\":222.0,\"legs\":[{\"steps\":["
+                    + "{\"distance\":300.0,\"duration\":60.0,\"name\":\"세종대로\","
+                    + "\"maneuver\":{\"type\":\"depart\",\"location\":[127.0,37.5]}},"
+                    + "{\"distance\":900.0,\"duration\":162.0,\"name\":\"을지로\","
+                    + "\"maneuver\":{\"type\":\"turn\",\"modifier\":\"right\",\"location\":[127.05,37.55]}}"
+                    + "]}]},"
+                    + "{\"geometry\":{\"coordinates\":[[127.0,37.5],[127.2,37.7]]},"
+                    + "\"distance\":1500,\"duration\":300.0,\"legs\":[]}]}";
+
+    private static final String OSRM_FOOT_ROUTE_JSON =
+            "{\"code\":\"Ok\",\"routes\":[{\"geometry\":{\"coordinates\":[[127.0,37.5],[127.1,37.6]]},"
+                    + "\"distance\":2000,\"duration\":2400.0,\"legs\":[{\"steps\":["
+                    + "{\"distance\":2000.0,\"duration\":2400.0,\"name\":\"\","
+                    + "\"maneuver\":{\"type\":\"depart\",\"location\":[127.0,37.5]}}]}]}]}";
+
     private static final String OSRM_TRIP_JSON =
             "{\"code\":\"Ok\","
                     + "\"waypoints\":[{\"waypoint_index\":0},{\"waypoint_index\":1},{\"waypoint_index\":2}],"
@@ -118,7 +136,7 @@ class RouteControllerTest {
     @Test
     @DisplayName("토큰 없이 호출하면 401을 반환한다")
     void noToken_returns401() throws Exception {
-        RouteRequest request = new RouteRequest(List.of(point(37.5, 127.0, "A"), point(37.6, 127.1, "B")));
+        RouteRequest request = new RouteRequest(List.of(point(37.5, 127.0, "A"), point(37.6, 127.1, "B")), "driving");
 
         mockMvc.perform(post("/api/route/directions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -133,7 +151,7 @@ class RouteControllerTest {
     void getDirections_cacheMissThenHit() throws Exception {
         RoutePointDto a = point(37.5, 127.0, "P_HONGDAE");
         RoutePointDto b = point(37.6, 127.1, "P_GANGNAM");
-        RouteRequest request = new RouteRequest(List.of(a, b));
+        RouteRequest request = new RouteRequest(List.of(a, b), "driving");
 
         given(restTemplate.getForObject(argThat((String url) -> url != null && url.contains("/route/v1/driving/")), eq(String.class)))
                 .willReturn(OSRM_ROUTE_JSON);
@@ -178,7 +196,7 @@ class RouteControllerTest {
         mockMvc.perform(post("/api/route/directions")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new RouteRequest(List.of(a, b)))))
+                        .content(objectMapper.writeValueAsString(new RouteRequest(List.of(a, b), "driving"))))
                 .andExpect(status().isOk());
 
         // table을 같은 쌍으로 호출 - 같은 캐시 행을 읽어야 하므로 OSRM 추가 호출이 없어야 한다
@@ -193,6 +211,60 @@ class RouteControllerTest {
                 .andExpect(jsonPath("$.profile").value("driving"));
 
         verify(restTemplate, times(1)).getForObject(anyString(), eq(String.class));
+    }
+
+    @Test
+    @DisplayName("directions - OSRM steps/alternatives를 한국어 안내가 채워진 구간 정보로 반환한다")
+    void getDirections_returnsStepsAndAlternatives() throws Exception {
+        RoutePointDto a = point(37.5, 127.0, "P_STEP_A");
+        RoutePointDto b = point(37.6, 127.1, "P_STEP_B");
+
+        given(restTemplate.getForObject(
+                argThat((String url) -> url != null && url.contains("steps=true") && url.contains("alternatives=true")),
+                eq(String.class)))
+                .willReturn(OSRM_ROUTE_WITH_STEPS_JSON);
+
+        mockMvc.perform(post("/api/route/directions")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RouteRequest(List.of(a, b), "driving"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile").value("driving"))
+                .andExpect(jsonPath("$.legs[0].fromIndex").value(0))
+                .andExpect(jsonPath("$.legs[0].toIndex").value(1))
+                .andExpect(jsonPath("$.legs[0].steps.length()").value(2))
+                .andExpect(jsonPath("$.legs[0].steps[0].instruction").value("세종대로에서 출발"))
+                .andExpect(jsonPath("$.legs[0].steps[1].instruction").value("을지로 방면으로 우회전"))
+                .andExpect(jsonPath("$.legs[0].steps[1].maneuverType").value("turn"))
+                .andExpect(jsonPath("$.legs[0].alternatives.length()").value(1))
+                .andExpect(jsonPath("$.legs[0].alternatives[0].duration").value(300));
+    }
+
+    @Test
+    @DisplayName("table - foot 프로필이면 driving이 아니라 도보 서버/프로필로 조회한다")
+    void getTable_footProfile_callsFootRouting() throws Exception {
+        RoutePointDto a = point(37.5, 127.0, "P_FOOT_A");
+        RoutePointDto b = point(37.6, 127.1, "P_FOOT_B");
+
+        given(restTemplate.getForObject(
+                argThat((String url) -> url != null && url.contains("/route/v1/foot/")), eq(String.class)))
+                .willReturn(OSRM_FOOT_ROUTE_JSON);
+
+        mockMvc.perform(post("/api/route/table")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RouteTableRequest(List.of(a, b), "foot"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile").value("foot"))
+                .andExpect(jsonPath("$.durations[0][1]").value(2400.0))
+                .andExpect(jsonPath("$.legs[0].steps.length()").value(1));
+
+        assertThat(routeCacheRepository
+                .findByFromKeyAndToKeyAndMode("P:P_FOOT_A", "P:P_FOOT_B", RouteCacheMode.FOOT))
+                .isPresent();
+        verify(restTemplate).getForObject(
+                argThat((String url) -> url != null && url.contains("routed-foot") && url.contains("/route/v1/foot/")),
+                eq(String.class));
     }
 
     // ---------- /api/route/trip (캐싱 대상 아님, smoke만) ----------
@@ -302,7 +374,7 @@ class RouteControllerTest {
         mockMvc.perform(post("/api/route/directions")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new RouteRequest(List.of(a, b)))))
+                        .content(objectMapper.writeValueAsString(new RouteRequest(List.of(a, b), "driving"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.distance").value(1200));
 

@@ -4,13 +4,19 @@ import com.planmate.common.externalAPI.OsrmRouting;
 import com.planmate.common.externalAPI.OsrmRouting.RoutingResult;
 import com.planmate.common.externalAPI.OsrmRouting.TripResult;
 import com.planmate.domain.route.cache.RouteCacheKeyGenerator;
+import com.planmate.common.externalAPI.OsrmRouting.RouteAlternative;
+import com.planmate.common.externalAPI.OsrmRouting.RouteStep;
+import com.planmate.domain.route.dto.RouteAlternativeDto;
+import com.planmate.domain.route.dto.RouteLegDto;
 import com.planmate.domain.route.dto.RoutePointDto;
 import com.planmate.domain.route.dto.RouteResponse;
+import com.planmate.domain.route.dto.RouteStepDto;
 import com.planmate.domain.route.dto.RouteTableResponse;
 import com.planmate.domain.route.dto.RouteTripLegDto;
 import com.planmate.domain.route.dto.RouteTripResponse;
 import com.planmate.domain.route.enums.RouteCacheMode;
 import com.planmate.domain.route.repository.RouteCacheRepository;
+import com.planmate.domain.route.util.RouteInstructionFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -34,19 +40,22 @@ public class RoadRouteService {
      * 기존과 동일하게 입력 경유지를 그대로 반환한다(프론트엔드가 직선으로 표시).
      */
     @Transactional
-    public RouteResponse getRoute(List<RoutePointDto> waypoints) {
+    public RouteResponse getRoute(List<RoutePointDto> waypoints, String profile) {
+        String normalized = OsrmRouting.normalizeProfile(profile);
         if (waypoints == null || waypoints.size() < 2) {
-            return new RouteResponse(new ArrayList<>(), 0, 0);
+            return new RouteResponse(new ArrayList<>(), 0, 0, normalized, new ArrayList<>());
         }
 
+        RouteCacheMode mode = RouteCacheMode.fromProfile(normalized);
         List<RoutePointDto> path = new ArrayList<>();
+        List<RouteLegDto> legs = new ArrayList<>();
         long totalDistance = 0;
         long totalDuration = 0;
 
         for (int i = 0; i < waypoints.size() - 1; i++) {
-            RoutingResult leg = getOrFetchRoadPair(waypoints.get(i), waypoints.get(i + 1), RouteCacheMode.DRIVING);
+            RoutingResult leg = getOrFetchRoadPair(waypoints.get(i), waypoints.get(i + 1), mode);
             if (leg == null) {
-                return new RouteResponse(waypoints, 0, 0);
+                return new RouteResponse(waypoints, 0, 0, normalized, new ArrayList<>());
             }
             if (!leg.path().isEmpty()) {
                 if (!path.isEmpty()) {
@@ -54,11 +63,12 @@ public class RoadRouteService {
                 }
                 path.addAll(leg.path());
             }
+            legs.add(toLegDto(i, leg));
             totalDistance += leg.distance();
             totalDuration += leg.duration();
         }
 
-        return new RouteResponse(path, totalDistance, totalDuration);
+        return new RouteResponse(path, totalDistance, totalDuration, normalized, legs);
     }
 
     /**
@@ -70,23 +80,25 @@ public class RoadRouteService {
     public RouteTableResponse getTable(List<RoutePointDto> waypoints, String profile) {
         String normalized = OsrmRouting.normalizeProfile(profile);
         if (waypoints == null || waypoints.size() < 2) {
-            return new RouteTableResponse(new ArrayList<>(), new ArrayList<>(), normalized);
+            return new RouteTableResponse(new ArrayList<>(), new ArrayList<>(), normalized, new ArrayList<>());
         }
 
         RouteCacheMode mode = RouteCacheMode.fromProfile(normalized);
         int n = waypoints.size();
         List<List<Double>> durations = emptyMatrix(n);
         List<List<Double>> distances = emptyMatrix(n);
+        List<RouteLegDto> legs = new ArrayList<>();
 
         for (int i = 0; i < n - 1; i++) {
             RoutingResult leg = getOrFetchRoadPair(waypoints.get(i), waypoints.get(i + 1), mode);
             if (leg != null) {
                 durations.get(i).set(i + 1, (double) leg.duration());
                 distances.get(i).set(i + 1, (double) leg.distance());
+                legs.add(toLegDto(i, leg));
             }
         }
 
-        return new RouteTableResponse(durations, distances, normalized);
+        return new RouteTableResponse(durations, distances, normalized, legs);
     }
 
     /**
@@ -116,19 +128,52 @@ public class RoadRouteService {
         String fromKey = RouteCacheKeyGenerator.key(from);
         String toKey = RouteCacheKeyGenerator.key(to);
 
+        // steps가 null인 행은 턴바이턴 안내를 받아오기 전(구 스키마)에 저장된 캐시다.
+        // 그대로 쓰면 TTL(30일) 동안 상세 안내가 빈 채로 나가므로 미스로 취급해 다시 채운다.
         Optional<RoutingResult> cached = routeCacheSupport.readValidCache(
                 routeCacheRepository.findByFromKeyAndToKeyAndMode(fromKey, toKey, mode),
-                RoutingResult.class, "도로");
+                RoutingResult.class, "도로")
+                .filter(c -> c.steps() != null);
         if (cached.isPresent()) {
             return cached.get();
         }
 
-        RoutingResult result = osrmRouting.getRoute(List.of(from, to));
+        RoutingResult result = osrmRouting.getRoute(List.of(from, to), mode.getDbValue());
         if (result == null) {
             return null;
         }
         routeCacheSupport.writeCache(fromKey, toKey, mode, result, ROAD_CACHE_TTL_DAYS, "도로");
         return result;
+    }
+
+    /**
+     * OSRM 구간 결과를 응답 DTO로 옮기며 한국어 안내 문구를 채운다.
+     */
+    private RouteLegDto toLegDto(int fromIndex, RoutingResult leg) {
+        List<RouteStepDto> steps = new ArrayList<>();
+        if (leg.steps() != null) {
+            for (RouteStep step : leg.steps()) {
+                steps.add(new RouteStepDto(
+                        step.distance(),
+                        step.duration(),
+                        step.name(),
+                        RouteInstructionFormatter.format(step),
+                        step.maneuverType(),
+                        step.maneuverModifier(),
+                        step.exit(),
+                        step.location()));
+            }
+        }
+
+        List<RouteAlternativeDto> alternatives = new ArrayList<>();
+        if (leg.alternatives() != null) {
+            for (RouteAlternative alternative : leg.alternatives()) {
+                alternatives.add(new RouteAlternativeDto(
+                        alternative.path(), alternative.distance(), alternative.duration()));
+            }
+        }
+
+        return new RouteLegDto(fromIndex, fromIndex + 1, leg.distance(), leg.duration(), steps, alternatives);
     }
 
     private List<List<Double>> emptyMatrix(int n) {

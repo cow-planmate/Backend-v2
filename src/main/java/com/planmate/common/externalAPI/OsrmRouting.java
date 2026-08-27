@@ -23,6 +23,9 @@ import org.springframework.web.util.UriComponentsBuilder;
 @RequiredArgsConstructor
 public class OsrmRouting {
 
+    /** 본 경로 외에 함께 내려줄 대안 경로 최대 개수. */
+    private static final int MAX_ALTERNATIVES = 2;
+
     @Value("${api.osrm.base-url:https://router.project-osrm.org}")
     private String osrmBaseUrl;
 
@@ -32,19 +35,21 @@ public class OsrmRouting {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    public RoutingResult getRoute(List<RoutePointDto> waypoints) {
+    /**
+     * 두 지점 이상의 경로를 조회한다. 프로필({@code driving} | {@code foot})에 맞는 서버로 붙고,
+     * 턴바이턴 안내(steps)와 대안 경로(alternatives)까지 함께 받아온다 — 셋 다 같은 호출 한 번에
+     * 실려오므로 추가 요청 비용이 없다.
+     */
+    public RoutingResult getRoute(List<RoutePointDto> waypoints, String profile) {
         if (waypoints == null || waypoints.size() < 2) return null;
 
-        StringBuilder coords = new StringBuilder();
-        for (int i = 0; i < waypoints.size(); i++) {
-            RoutePointDto p = waypoints.get(i);
-            if (i > 0) coords.append(";");
-            coords.append(p.getLng()).append(",").append(p.getLat());
-        }
-
-        String url = UriComponentsBuilder.fromUriString(osrmBaseUrl + "/route/v1/driving/" + coords)
+        String normalized = normalizeProfile(profile);
+        String url = UriComponentsBuilder
+                .fromUriString(resolveBaseUrl(normalized) + "/route/v1/" + normalized + "/" + buildCoords(waypoints))
                 .queryParam("overview", "full")
                 .queryParam("geometries", "geojson")
+                .queryParam("steps", "true")
+                .queryParam("alternatives", "true")
                 .toUriString();
 
         try {
@@ -56,22 +61,85 @@ public class OsrmRouting {
             }
             JsonNode routes = root.path("routes");
             if (!routes.isArray() || routes.isEmpty()) return null;
-            JsonNode route = routes.get(0);
-            JsonNode coordinates = route.path("geometry").path("coordinates");
-            List<RoutePointDto> path = new ArrayList<>();
-            for (JsonNode c : coordinates) {
-                double lng = c.get(0).asDouble();
-                double lat = c.get(1).asDouble();
-                path.add(new RoutePointDto(lat, lng, null));
+
+            RoutingResult primary = parseRoute(routes.get(0));
+            if (primary == null) return null;
+
+            // 첫 경로가 본 경로, 나머지가 대안. 응답/캐시가 과도하게 커지지 않도록 개수를 제한한다.
+            List<RouteAlternative> alternatives = new ArrayList<>();
+            for (int i = 1; i < routes.size() && alternatives.size() < MAX_ALTERNATIVES; i++) {
+                RoutingResult alt = parseRoute(routes.get(i));
+                if (alt != null) {
+                    alternatives.add(new RouteAlternative(alt.path(), alt.distance(), alt.duration()));
+                }
             }
-            if (path.isEmpty()) return null;
-            long distance = Math.round(route.path("distance").asDouble(0));
-            long duration = Math.round(route.path("duration").asDouble(0));
-            return new RoutingResult(path, distance, duration);
+
+            return new RoutingResult(primary.path(), primary.distance(), primary.duration(),
+                    primary.steps(), alternatives);
         } catch (Exception e) {
             log.warn("OSRM 길찾기 호출 실패: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * OSRM {@code routes[i]} 하나를 파싱한다. 좌표가 비면 null을 반환한다.
+     * (대안 경로 파싱에도 재사용하므로 alternatives 필드는 비운 채로 돌려준다)
+     */
+    private RoutingResult parseRoute(JsonNode route) {
+        List<RoutePointDto> path = new ArrayList<>();
+        for (JsonNode c : route.path("geometry").path("coordinates")) {
+            path.add(new RoutePointDto(c.get(1).asDouble(), c.get(0).asDouble(), null));
+        }
+        if (path.isEmpty()) return null;
+
+        List<RouteStep> steps = new ArrayList<>();
+        for (JsonNode leg : route.path("legs")) {
+            for (JsonNode step : leg.path("steps")) {
+                RouteStep parsed = parseStep(step);
+                if (parsed != null) {
+                    steps.add(parsed);
+                }
+            }
+        }
+
+        long distance = Math.round(route.path("distance").asDouble(0));
+        long duration = Math.round(route.path("duration").asDouble(0));
+        return new RoutingResult(path, distance, duration, steps, new ArrayList<>());
+    }
+
+    /**
+     * OSRM {@code steps[i]} 하나를 파싱한다. 안내 문구는 여기서 만들지 않고
+     * maneuver 코드를 그대로 보존한다 — 문구 생성은 서비스 레이어의 책임이다.
+     *
+     * step 자체의 폴리라인은 담지 않는다. 전체 경로 좌표가 이미 path에 있어 중복이고,
+     * 캐시 payload(jsonb)만 배로 불어나기 때문이다. 대신 회전 지점 좌표 하나만 남긴다.
+     */
+    private RouteStep parseStep(JsonNode step) {
+        JsonNode maneuver = step.path("maneuver");
+        JsonNode location = maneuver.path("location");
+
+        RoutePointDto point = null;
+        if (location.isArray() && location.size() >= 2) {
+            point = new RoutePointDto(location.get(1).asDouble(), location.get(0).asDouble(), null);
+        }
+
+        String name = step.path("name").asText(null);
+        String type = maneuver.path("type").asText(null);
+        String modifier = maneuver.path("modifier").asText(null);
+        Integer exit = maneuver.has("exit") ? maneuver.path("exit").asInt() : null;
+
+        if (type == null && point == null) {
+            return null;
+        }
+        return new RouteStep(
+                Math.round(step.path("distance").asDouble(0)),
+                Math.round(step.path("duration").asDouble(0)),
+                (name == null || name.isBlank()) ? null : name,
+                type,
+                (modifier == null || modifier.isBlank()) ? null : modifier,
+                exit,
+                point);
     }
 
     /**
@@ -219,7 +287,15 @@ public class OsrmRouting {
         return result;
     }
 
-    public record RoutingResult(List<RoutePointDto> path, long distance, long duration) {}
+    public record RoutingResult(List<RoutePointDto> path, long distance, long duration,
+            List<RouteStep> steps, List<RouteAlternative> alternatives) {}
+
+    /** 턴바이턴 안내 한 단계. {@code maneuverType}/{@code maneuverModifier}는 OSRM 원본 코드다. */
+    public record RouteStep(long distance, long duration, String name,
+            String maneuverType, String maneuverModifier, Integer exit, RoutePointDto location) {}
+
+    /** 본 경로 대신 선택할 수 있는 대안 경로. */
+    public record RouteAlternative(List<RoutePointDto> path, long distance, long duration) {}
 
     public record TableResult(List<List<Double>> durations, List<List<Double>> distances) {}
 
