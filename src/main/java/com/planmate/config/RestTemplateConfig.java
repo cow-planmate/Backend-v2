@@ -34,4 +34,14 @@ public class RestTemplateConfig {
                 .readTimeout(Duration.ofSeconds(10))
                 .build();
     }
+
+    // GoogleSearchClient/GooglePlaceImageWorker 전용 — tourApiRestTemplate과 동일한 이유(타임아웃 필요,
+    // ODsay 등 기존 공용 restTemplate()은 건드리지 않음). project_ai/04_기능/place/06_키워드검색_API_인프라설계.md 2-2절.
+    @Bean
+    public RestTemplate googlePlacesRestTemplate(RestTemplateBuilder builder) {
+        return builder
+                .connectTimeout(Duration.ofSeconds(3))
+                .readTimeout(Duration.ofSeconds(5))
+                .build();
+    }
 }

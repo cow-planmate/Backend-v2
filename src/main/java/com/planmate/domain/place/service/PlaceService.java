@@ -3,16 +3,27 @@ package com.planmate.domain.place.service;
 import com.planmate.common.exception.domain.DestinationNotFoundException;
 import com.planmate.common.exception.domain.TourApiCallFailedException;
 import com.planmate.common.exception.domain.KakaoLocalNotConfiguredException;
+import com.planmate.common.externalAPI.GooglePlaceImageWorker;
+import com.planmate.common.externalAPI.GoogleSearchClient;
+import com.planmate.common.externalAPI.GoogleSearchClient.GoogleTextSearchItem;
+import com.planmate.common.externalAPI.GoogleSearchClient.GoogleTextSearchResult;
 import com.planmate.common.externalAPI.KakaoLocalClient;
 import com.planmate.common.externalAPI.TourApiClient;
 import com.planmate.common.externalAPI.TourApiClient.AreaBasedListItem;
 import com.planmate.common.externalAPI.TourApiClient.AreaBasedListResult;
+import com.planmate.common.storage.GooglePlaceImageStorage;
 import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
+import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
+import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.place.dto.PlaceKeywordSearchResponse;
 import com.planmate.domain.place.dto.PlaceSearchRequest;
 import com.planmate.domain.place.dto.PlaceSearchResponse;
 import com.planmate.domain.place.dto.PlaceSummaryDto;
+import com.planmate.domain.place.dto.PlaceTextSearchNextRequest;
+import com.planmate.domain.place.dto.PlaceTextSearchRequest;
+import com.planmate.domain.place.dto.PlaceTextSearchResponse;
+import com.planmate.domain.place.dto.PlaceTextSearchResultDto;
 import com.planmate.domain.place.enums.PlaceCategory;
 import com.planmate.domain.theme.cache.PreferredThemeLclsSystmCache;
 import com.planmate.domain.theme.entity.PreferredThemeLclsSystmCode;
@@ -51,6 +62,10 @@ public class PlaceService {
     private final TourApiClient tourApiClient;
     private final KakaoLocalClient kakaoLocalClient;
     private final ExecutorService tourApiExecutor;
+    private final DestinationRepository destinationRepository;
+    private final GoogleSearchClient googleSearchClient;
+    private final GooglePlaceImageStorage googlePlaceImageStorage;
+    private final GooglePlaceImageWorker googlePlaceImageWorker;
 
     @Transactional(readOnly = true)
     /**
@@ -68,6 +83,55 @@ public class PlaceService {
         }
         int limit = size == null ? 10 : Math.min(Math.max(size, 1), 15);
         return PlaceKeywordSearchResponse.from(kakaoLocalClient.searchKeyword(query.trim(), limit));
+    }
+
+    /**
+     * Google Places Text Search 기반 자유 텍스트 장소 검색. 카카오 로컬({@link #searchByKeyword})과는
+     * 팀원이 별도로 만든 용도라 이름/경로 모두 분리돼 있다({@code /api/place/text-search}).
+     * project_ai/04_기능/place/07_키워드검색_API_상세설계.md §3.
+     */
+    @Transactional(readOnly = true)
+    public PlaceTextSearchResponse searchByText(PlaceTextSearchRequest request) {
+        Double[] bias = resolveBiasCoordinates(request.destinationId());
+        GoogleTextSearchResult result = googleSearchClient.searchPlace(request.query(), bias[0], bias[1]);
+        return buildTextSearchResponse(result);
+    }
+
+    /** 직전 응답의 nextPageToken을 그대로 왕복시켜 다음 페이지를 조회한다. 서버 상태 없음. */
+    @Transactional(readOnly = true)
+    public PlaceTextSearchResponse searchByTextNextPage(PlaceTextSearchNextRequest request) {
+        GoogleTextSearchResult result = googleSearchClient.searchNextPage(request.pageToken());
+        return buildTextSearchResponse(result);
+    }
+
+    // destinationId가 있으면 그 목적지 좌표로 소프트 가중치, 없으면 [null, null](순수 텍스트 검색).
+    // 06_키워드검색_API_인프라설계.md §3-2 — Geocoding API 재호출 없이 DB에 이미 저장된 좌표를 그대로 읽는다.
+    private Double[] resolveBiasCoordinates(Integer destinationId) {
+        if (destinationId == null) {
+            return new Double[] {null, null};
+        }
+        Destination destination = destinationRepository.findById(destinationId)
+                .orElseThrow(DestinationNotFoundException::new);
+        return new Double[] {
+                destination.getLatitude().doubleValue(),
+                destination.getLongitude().doubleValue()
+        };
+    }
+
+    private PlaceTextSearchResponse buildTextSearchResponse(GoogleTextSearchResult result) {
+        List<PlaceTextSearchResultDto> places = new ArrayList<>();
+        for (GoogleTextSearchItem item : result.items()) {
+            String thumbnailUrl = googlePlaceImageStorage.findExistingUrl(item.placeId());
+            if (thumbnailUrl == null) {
+                // 응답은 이 처리를 기다리지 않는다 — 실패해도 검색 자체는 정상 반환(fire-and-forget).
+                googlePlaceImageWorker.fetchAndUploadAsync(item.placeId(), item.photoReference());
+            }
+            places.add(PlaceTextSearchResultDto.from(item, thumbnailUrl));
+        }
+        return PlaceTextSearchResponse.builder()
+                .places(places)
+                .nextPageToken(result.nextPageToken())
+                .build();
     }
 
     public PlaceSearchResponse searchPlaces(PlaceSearchRequest request, UUID userId) {
