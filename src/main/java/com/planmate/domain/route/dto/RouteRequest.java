@@ -13,4 +13,7 @@ public class RouteRequest {
 
     @Schema(description = "경유지 목록 (순서대로)")
     private List<RoutePointDto> waypoints;
+
+    @Schema(description = "이동 수단 프로필 (driving | foot)", example = "driving", defaultValue = "driving")
+    private String profile;
 }

@@ -19,4 +19,10 @@ public class RouteResponse {
 
     @Schema(description = "총 소요 시간(초)")
     private long duration;
+
+    @Schema(description = "적용된 이동 수단 프로필", example = "driving")
+    private String profile;
+
+    @Schema(description = "구간(인접 경유지 쌍)별 상세 정보 — 턴바이턴 안내와 대안 경로를 포함한다")
+    private List<RouteLegDto> legs;
 }

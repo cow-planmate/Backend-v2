@@ -30,10 +30,11 @@ public class RouteController {
     private final RoadRouteService roadRouteService;
     private final TransitRouteService transitRouteService;
 
-    @Operation(summary = "경유지 기반 경로 조회", description = "경유지 목록을 받아 OSRM으로 실제 도로 경로를 계산합니다.")
+    @Operation(summary = "경유지 기반 경로 조회",
+            description = "경유지 목록을 받아 OSRM으로 실제 도로 경로를 계산합니다. 구간별 턴바이턴 안내와 대안 경로를 함께 반환합니다.")
     @PostMapping("/directions")
     public ResponseEntity<RouteResponse> getDirections(@RequestBody RouteRequest request) {
-        return ResponseEntity.ok(roadRouteService.getRoute(request.getWaypoints()));
+        return ResponseEntity.ok(roadRouteService.getRoute(request.getWaypoints(), request.getProfile()));
     }
 
     @Operation(summary = "장소 쌍별 소요시간/거리 매트릭스 조회", description = "좌표 목록의 모든 쌍에 대한 소요 시간(초)과 이동 거리(m) 매트릭스를 반환합니다.")

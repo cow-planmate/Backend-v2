@@ -20,4 +20,7 @@ public class RouteTableResponse {
 
     @Schema(description = "적용된 이동 수단 프로필", example = "driving")
     private String profile;
+
+    @Schema(description = "인접 구간([i] → [i+1])별 상세 정보. 계산에 실패한 구간은 목록에서 빠진다")
+    private List<RouteLegDto> legs;
 }
