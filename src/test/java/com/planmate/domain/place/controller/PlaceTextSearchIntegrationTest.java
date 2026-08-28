@@ -8,6 +8,7 @@ import com.planmate.domain.place.dto.PlaceTextSearchNextRequest;
 import com.planmate.domain.place.dto.PlaceTextSearchResponse;
 import com.planmate.domain.place.dto.PlaceTextSearchResultDto;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -25,7 +26,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 네트워크/외부 API 의존이라 다른 테스트보다 느리고, Google 응답 자체는 결정적이지 않으므로
  * 구조적인 것(필드가 비어있지 않은지, 상태코드, 실제 파이프라인이 끝까지 도는지)만 검증한다.
  * project_ai/04_기능/place/07_키워드검색_API_상세설계.md
+ *
+ * <p>CI에는 실제 Google API 키/MinIO가 없어 "external" 태그로 빼뒀다(기본 test 태스크에서
+ * 제외, ./gradlew externalTest로 로컬에서 인프라 갖춰놓고 수동 실행). build.gradle 참고.
  */
+@Tag("external")
 @SpringBootTest
 @AutoConfigureMockMvc
 class PlaceTextSearchIntegrationTest {

@@ -3,6 +3,7 @@ package com.planmate.common.storage;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,7 +15,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 실제 로컬 MinIO(localhost:9000)를 대상으로 업로드/존재 확인을 검증한다.
  * project_ai/04_기능/place/06_키워드검색_API_인프라설계.md §4-2/§4-2-1.
+ *
+ * <p>CI에는 실제 MinIO가 없어 "external" 태그로 빼뒀다(기본 test 태스크에서 제외,
+ * ./gradlew externalTest로 로컬에서 인프라 갖춰놓고 수동 실행). build.gradle 참고.
  */
+@Tag("external")
 @SpringBootTest
 class GooglePlaceImageStorageTest {
 
