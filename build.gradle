@@ -128,7 +128,11 @@ dependencies {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    // "external" 태그(실제 Google API/MinIO 등 외부 인프라에 직접 붙는 테스트)는 CI에
+    // 그 인프라가 없어서 뺀다 — 로컬에서 인프라 갖춰놓고 ./gradlew externalTest 로 따로 돌린다.
+    useJUnitPlatform {
+        excludeTags 'external'
+    }
 
     // Testcontainers 가 Docker 데몬에 붙게 만드는 설정. docker-java 는 API 버전을 명시하지
     // 않으면 1.32 로 요청하는데 Docker 25+ 데몬은 최소 1.44 를 요구해 400 으로 거부한다.
@@ -140,6 +144,21 @@ tasks.named('test') {
     systemProperty 'api.version', System.getenv('DOCKER_API_VERSION') ?: '1.44'
     // JDK 17+ self-attach 제한 때문에 Mockito 5 inline mock maker(byte-buddy-agent) 초기화가
     // 실패하는 걸 막기 위한 플래그(IDE는 자동으로 붙여주지만 Gradle CLI는 명시가 필요)
+    jvmArgs += ['-Djdk.attach.allowAttachSelf=true']
+}
+
+tasks.register('externalTest', Test) {
+    description = '실제 Google Places API/MinIO 등 외부 인프라에 붙는 "external" 태그 테스트만 돈다. ' +
+            'CI에는 그 인프라가 없어 기본 test 태스크에서는 빠져 있다 — 로컬에 인프라(도커 MinIO, ' +
+            'application-secret.yml의 실 API 키)를 갖춰놓고 수동으로 실행해서 검증할 때 쓴다.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'external'
+    }
+    environment 'DOCKER_HOST', System.getenv('DOCKER_HOST') ?: 'unix:///var/run/docker.sock'
+    systemProperty 'api.version', System.getenv('DOCKER_API_VERSION') ?: '1.44'
     jvmArgs += ['-Djdk.attach.allowAttachSelf=true']
 }
 
