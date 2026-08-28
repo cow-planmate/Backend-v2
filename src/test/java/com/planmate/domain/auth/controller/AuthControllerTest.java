@@ -99,6 +99,39 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("로그인 실패 - 실제 DB에 정지 상태로 저장된 계정은 비밀번호가 맞아도 403, AUTH_009")
+    void login_fail_accountSuspended() throws Exception {
+        testUser.suspend(java.time.LocalDateTime.now().plusDays(3), "약관 위반");
+        userRepository.saveAndFlush(testUser);
+        entityManager.clear();
+
+        LoginRequest request = new LoginRequest(testUser.getEmail(), RAW_PASSWORD);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_009"));
+    }
+
+    @Test
+    @DisplayName("로그인 실패 - 영구 정지(until=null로 정지)는 sentinel이 실제 DB를 왕복해도 '영구 정지' 메시지로 나온다(만료일 대신)")
+    void login_fail_accountSuspended_permanent() throws Exception {
+        testUser.suspend(null, "심각한 위반");
+        userRepository.saveAndFlush(testUser);
+        entityManager.clear();
+
+        LoginRequest request = new LoginRequest(testUser.getEmail(), RAW_PASSWORD);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_009"))
+                .andExpect(jsonPath("$.message").value("영구 정지된 계정입니다. 사유: 심각한 위반"));
+    }
+
+    @Test
     @DisplayName("로그인 검증 실패 - 이메일 형식 위반 시 400, COMMON_001")
     void login_validationFailure_invalidEmail() throws Exception {
         LoginRequest request = new LoginRequest("not-an-email", RAW_PASSWORD);
@@ -174,6 +207,24 @@ class AuthControllerTest {
 
         String newAccessToken = objectMapper.readTree(responseBody).get("accessToken").asText();
         assertThat(jwtTokenProvider.extractRole(newAccessToken)).isEqualTo("ADMIN");
+    }
+
+    @Test
+    @DisplayName("Access Token 재발급 실패 - 로그인 이후 정지된 계정은 리프레시 토큰이 살아있어도 403, AUTH_009")
+    void reissue_fail_accountSuspended() throws Exception {
+        issuedRefreshToken = "test-refresh-token-" + UUID.randomUUID();
+        refreshTokenRedisRepository.save(issuedRefreshToken, testUser.getUserId(), Duration.ofDays(1));
+
+        entityManager.flush();
+        testUser.suspend(java.time.LocalDateTime.now().plusDays(3), "약관 위반");
+        userRepository.saveAndFlush(testUser);
+        entityManager.clear();
+
+        mockMvc.perform(post("/api/auth/token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RefreshTokenRequest(issuedRefreshToken))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_009"));
     }
 
     @Test

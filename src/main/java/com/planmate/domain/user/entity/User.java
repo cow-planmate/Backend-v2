@@ -23,6 +23,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.SQLRestriction;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Getter
@@ -89,6 +90,20 @@ public class User extends BaseSoftDeleteEntity {
     @Builder.Default
     private boolean profilePublic = false;
 
+    /**
+     * 정지 종료 시각. null이면 정지 아님. 영구 정지는 {@link #PERMANENT_SUSPENSION_UNTIL}로 저장한다 —
+     * "정지 아님"과 "영구 정지"를 둘 다 null로 표현하면 {@link #isSuspended()}가 구분할 수 없기 때문이다.
+     * null 변환은 이 클래스의 {@link #suspend} 안에서만 일어나고, 바깥(Service/Controller)은
+     * "영구 정지는 null로 요청한다"는 API 계약만 알면 된다.
+     */
+    @Column(name = "suspended_until")
+    private LocalDateTime suspendedUntil;
+
+    @Column(name = "suspend_reason", length = 255)
+    private String suspendReason;
+
+    public static final LocalDateTime PERMANENT_SUSPENSION_UNTIL = LocalDateTime.of(9999, 12, 31, 23, 59, 59);
+
     @PrePersist
     void assignId() {
         if (this.userId == null) {
@@ -122,5 +137,23 @@ public class User extends BaseSoftDeleteEntity {
 
     public void changeProfileImageUrl(String newProfileImageUrl) {
         this.profileImageUrl = newProfileImageUrl;
+    }
+
+    /**
+     * 관리자 정지. {@code until}이 null이면 영구 정지 의도이므로 sentinel({@link #PERMANENT_SUSPENSION_UNTIL})로
+     * 치환해 저장한다 — {@link #isSuspended()}가 "정지 아님"과 "영구 정지"를 null 하나로 혼동하지 않게 하기 위함.
+     */
+    public void suspend(LocalDateTime until, String reason) {
+        this.suspendedUntil = until != null ? until : PERMANENT_SUSPENSION_UNTIL;
+        this.suspendReason = reason;
+    }
+
+    public void unsuspend() {
+        this.suspendedUntil = null;
+        this.suspendReason = null;
+    }
+
+    public boolean isSuspended() {
+        return suspendedUntil != null && suspendedUntil.isAfter(LocalDateTime.now());
     }
 }
