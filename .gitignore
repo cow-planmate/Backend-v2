@@ -50,6 +50,9 @@ bin/
 src/main/resources/application-secret.yml
 .env
 
+# 로컬 개발 인프라 (개인 환경용)
+docker-compose.local.yml
+
 # Logs
 logs/
 
