@@ -97,7 +97,7 @@ public class PlaceCacheRepository {
     }
 
     // 선호테마가 있으면 "매치=0 / 비매치=1" 랭크 term 을 ORDER BY 맨 앞에 붙인다(끝에 ", " 포함).
-    // level(1/2/3)이 각각 lcls_systm1/2/3 컬럼에 대응 — TourApiClient.buildAreaBasedListUrl 의 switch 를 SQL 로.
+    // level(1/2/3)이 각각 lcls_systm1/2/3 컬럼에 대응(현행 areaBasedList2 의 lclsSystm1/2/3 파라미터 매핑과 동일).
     private static String themeRankOrderTerm(List<PlaceSearchCriteria.ThemeCode> themeCodes, MapSqlParameterSource params) {
         if (themeCodes.isEmpty()) {
             return "";
@@ -126,7 +126,7 @@ public class PlaceCacheRepository {
     }
 
     /**
-     * {@code place_list} 조회 1행 — 현행 {@code TourApiClient.AreaBasedListItem}과 같은 필드.
+     * {@code place_list} 조회 1행 — {@code areaBasedList2} 공용 필드 중 목록/카드뷰에 쓰는 것들.
      * NULL 좌표는 null(0.0 아님), 빈 문자열은 null 로 정규화됨(§4-6).
      */
     public record PlaceRow(

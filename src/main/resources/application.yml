@@ -139,9 +139,6 @@ api:
   kakao:
     # 카카오 로컬(장소 검색) REST API 키. 지도 SDK의 JavaScript 키와 다른 키다.
     rest-key: ${KAKAO_REST_API_KEY:}
-  tour:
-    key: ${TOUR_API_KEY:}
-    base-url: ${TOUR_API_BASE_URL:https://apis.data.go.kr/B551011/KorService2}
   google:
     key: ${GOOGLE_PLACES_API_KEY:}
 
