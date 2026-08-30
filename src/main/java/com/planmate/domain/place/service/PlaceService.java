@@ -1,22 +1,19 @@
 package com.planmate.domain.place.service;
 
 import com.planmate.common.exception.domain.DestinationNotFoundException;
-import com.planmate.common.exception.domain.TourApiCallFailedException;
 import com.planmate.common.exception.domain.KakaoLocalNotConfiguredException;
 import com.planmate.common.externalAPI.GooglePlaceImageWorker;
 import com.planmate.common.externalAPI.GoogleSearchClient;
 import com.planmate.common.externalAPI.GoogleSearchClient.GoogleTextSearchItem;
 import com.planmate.common.externalAPI.GoogleSearchClient.GoogleTextSearchResult;
 import com.planmate.common.externalAPI.KakaoLocalClient;
-import com.planmate.common.externalAPI.TourApiClient;
-import com.planmate.common.externalAPI.TourApiClient.AreaBasedListItem;
-import com.planmate.common.externalAPI.TourApiClient.AreaBasedListResult;
 import com.planmate.common.storage.GooglePlaceImageStorage;
 import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
 import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
 import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.place.dto.PlaceKeywordSearchResponse;
+import com.planmate.domain.place.dto.PlaceSearchCriteria;
 import com.planmate.domain.place.dto.PlaceSearchRequest;
 import com.planmate.domain.place.dto.PlaceSearchResponse;
 import com.planmate.domain.place.dto.PlaceSummaryDto;
@@ -24,44 +21,32 @@ import com.planmate.domain.place.dto.PlaceTextSearchNextRequest;
 import com.planmate.domain.place.dto.PlaceTextSearchRequest;
 import com.planmate.domain.place.dto.PlaceTextSearchResponse;
 import com.planmate.domain.place.dto.PlaceTextSearchResultDto;
+import com.planmate.domain.place.repository.PlaceCacheRepository;
 import com.planmate.domain.place.enums.PlaceCategory;
 import com.planmate.domain.theme.cache.PreferredThemeLclsSystmCache;
 import com.planmate.domain.theme.entity.PreferredThemeLclsSystmCode;
 import com.planmate.domain.theme.enums.PreferredThemeCategory;
 import com.planmate.domain.theme.repository.UserPreferredThemeRepository;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 목적지·카테고리 기준 추천 장소 목록 조회.
- * project_ai/04_기능/place/05_추천장소_API_상세설계.md 3장.
+ * 데이터 출처: TourAPI 실시간 호출 → tourdata 캐시 DB(project_ai/04_기능/ai/03_추천장소_캐시전환_설계.md).
  */
 @Service
-@Slf4j
 @RequiredArgsConstructor
 public class PlaceService {
-
-    // 다중 소스 병합 시 소스 1개당 요청하는 numOfRows 상한(잠정값) — page가 비정상적으로 커도 호출량이 폭주하지 않게 막는 안전장치.
-    private static final int MAX_NUM_OF_ROWS_PER_SOURCE = 100;
-    // 지역코드×선호테마 조합 병렬 호출 전체 타임아웃(잠정값). 04_추천장소_API_인프라설계.md 3-4절.
-    private static final long PARALLEL_CALL_TIMEOUT_SECONDS = 8;
 
     private final DestinationRegionCodeCache destinationRegionCodeCache;
     private final UserPreferredThemeRepository userPreferredThemeRepository;
     private final PreferredThemeLclsSystmCache preferredThemeLclsSystmCache;
-    private final TourApiClient tourApiClient;
+    private final PlaceCacheRepository placeCacheRepository;
     private final KakaoLocalClient kakaoLocalClient;
-    private final ExecutorService tourApiExecutor;
     private final DestinationRepository destinationRepository;
     private final GoogleSearchClient googleSearchClient;
     private final GooglePlaceImageStorage googlePlaceImageStorage;
@@ -134,6 +119,14 @@ public class PlaceService {
                 .build();
     }
 
+    /**
+     * 목적지·카테고리 기준 추천 장소를 페이지 단위로 조회한다.
+     *
+     * <p>현행 대비: 지역코드×선호테마 조합만큼 TourAPI를 병렬 호출해 라운드로빈 병합하던 것을,
+     * tourdata 캐시 {@code place_list} 단일 SQL로 대체한다. 다중 소스 병합·재계산형 페이지네이션이
+     * 사라지고 {@code totalCount}가 정확해진다(테마 유저는 스코프가 "테마 매칭"→"지역+카테고리 전체"로 바뀜).
+     * project_ai/04_기능/ai/03_추천장소_캐시전환_설계.md.
+     */
     public PlaceSearchResponse searchPlaces(PlaceSearchRequest request, UUID userId) {
         List<DestinationRegionCode> regionCodes = destinationRegionCodeCache.get(request.destinationId());
         if (regionCodes.isEmpty()) {
@@ -141,204 +134,41 @@ public class PlaceService {
         }
 
         List<PreferredThemeLclsSystmCode> matchedThemes = resolveMatchedThemes(userId, request.category());
+        PlaceSearchCriteria criteria = toCriteria(request, regionCodes, matchedThemes);
 
-        if (request.category() == PlaceCategory.ATTRACTION) {
-            return searchTour(regionCodes, matchedThemes, request);
-        }
-
-        String contentTypeId = request.category().contentTypeIds().get(0);
-        ContentTypeResult result = fetchForContentType(regionCodes, contentTypeId, matchedThemes,
-                request.size(), request.page());
-        return buildResponse(result.items(), result.totalCountApprox(), result.hasNext(), request);
-    }
-
-    // ATTRACTION = 관광지(12)+문화시설(14) 고정 비율 7:3 배분, 한쪽이 소진되면 반대쪽에서 채움 (3장 3단계).
-    private PlaceSearchResponse searchTour(List<DestinationRegionCode> regionCodes,
-            List<PreferredThemeLclsSystmCode> matchedThemes, PlaceSearchRequest request) {
-
-        String attractionTypeId = PlaceCategory.ATTRACTION.contentTypeIds().get(0);
-        String cultureTypeId = PlaceCategory.ATTRACTION.contentTypeIds().get(1);
-
-        int[] split = tourSizeSplit(request.size());
-        int attractionSize = split[0];
-        int cultureSize = split[1];
-
-        ContentTypeResult attraction = fetchForContentType(regionCodes, attractionTypeId, matchedThemes, attractionSize, request.page());
-        ContentTypeResult culture = fetchForContentType(regionCodes, cultureTypeId, matchedThemes, cultureSize, request.page());
-
-        List<AreaBasedListItem> combined = mergeDistinct(attraction.items(), culture.items(), request.size());
-
-        int shortfall = request.size() - combined.size();
-        if (shortfall > 0) {
-            if (attraction.items().size() >= attractionSize && culture.items().size() < cultureSize) {
-                ContentTypeResult moreAttraction = fetchForContentType(regionCodes, attractionTypeId, matchedThemes,
-                        attractionSize + shortfall, request.page());
-                combined = mergeDistinct(moreAttraction.items(), culture.items(), request.size());
-            } else if (culture.items().size() >= cultureSize && attraction.items().size() < attractionSize) {
-                ContentTypeResult moreCulture = fetchForContentType(regionCodes, cultureTypeId, matchedThemes,
-                        cultureSize + shortfall, request.page());
-                combined = mergeDistinct(attraction.items(), moreCulture.items(), request.size());
-            }
-        }
-
-        long totalCountApprox = attraction.totalCountApprox() + culture.totalCountApprox();
-        boolean hasNext = attraction.hasNext() || culture.hasNext();
-        return buildResponse(combined, totalCountApprox, hasNext, request);
-    }
-
-    private int[] tourSizeSplit(int size) {
-        int attractionSize = (int) Math.round(size * 0.7);
-        int cultureSize = size - attractionSize;
-        return new int[] {attractionSize, cultureSize};
-    }
-
-    // 선호테마 필터 결과가 부족하면 테마 필터 없이 한 번 더 채운다 (3장 6단계, v1 계승).
-    private ContentTypeResult fetchForContentType(List<DestinationRegionCode> regionCodes, String contentTypeId,
-            List<PreferredThemeLclsSystmCode> themeCodes, int allocatedSize, int page) {
-
-        if (allocatedSize <= 0) {
-            return new ContentTypeResult(List.of(), 0, false);
-        }
-
-        List<SourceCall> calls = buildSourceCalls(regionCodes, contentTypeId, themeCodes);
-        MergeOutcome outcome = fetchAndMerge(calls, allocatedSize, page);
-
-        if (!themeCodes.isEmpty() && outcome.items().size() < allocatedSize) {
-            List<SourceCall> baseCalls = buildSourceCalls(regionCodes, contentTypeId, List.of());
-            MergeOutcome baseOutcome = fetchAndMerge(baseCalls, allocatedSize, page);
-            List<AreaBasedListItem> filled = mergeDistinct(outcome.items(), baseOutcome.items(), allocatedSize);
-            outcome = new MergeOutcome(filled, Math.max(outcome.totalCountApprox(), baseOutcome.totalCountApprox()),
-                    outcome.hasNext() || baseOutcome.hasNext());
-        }
-
-        return new ContentTypeResult(outcome.items(), outcome.totalCountApprox(), outcome.hasNext());
-    }
-
-    private List<SourceCall> buildSourceCalls(List<DestinationRegionCode> regionCodes, String contentTypeId,
-            List<PreferredThemeLclsSystmCode> themeCodes) {
-        List<SourceCall> calls = new ArrayList<>();
-        for (DestinationRegionCode regionCode : regionCodes) {
-            if (themeCodes.isEmpty()) {
-                calls.add(new SourceCall(regionCode, contentTypeId, null));
-            } else {
-                for (PreferredThemeLclsSystmCode themeCode : themeCodes) {
-                    calls.add(new SourceCall(regionCode, contentTypeId, themeCode));
-                }
-            }
-        }
-        return calls;
-    }
-
-    // 단일 소스면 TourAPI의 pageNo를 그대로 쓰고, 다중 소스면 재계산형(3-1절)으로 page*size(+1)만큼 매번 다시 병합한다.
-    private MergeOutcome fetchAndMerge(List<SourceCall> calls, int wantedSize, int page) {
-        if (calls.isEmpty()) {
-            return new MergeOutcome(List.of(), 0, false);
-        }
-
-        if (calls.size() == 1) {
-            SourceCall only = calls.get(0);
-            AreaBasedListResult result = callSource(only, wantedSize, page);
-            boolean hasNext = (long) page * wantedSize < result.totalCount();
-            return new MergeOutcome(result.items(), result.totalCount(), hasNext);
-        }
-
-        int neededForPage = page * wantedSize;
-        int probeCount = neededForPage + 1;
-        int perSourceRows = Math.min(MAX_NUM_OF_ROWS_PER_SOURCE, probeCount);
-
-        List<AreaBasedListResult> results = callSourcesInParallel(calls, perSourceRows, 1);
-        long totalCountApprox = results.stream().mapToLong(AreaBasedListResult::totalCount).sum();
-        List<AreaBasedListItem> merged = roundRobinMerge(results, probeCount);
-
-        boolean hasNext = merged.size() > neededForPage;
-        int fromIndex = Math.min((page - 1) * wantedSize, merged.size());
-        int toIndex = Math.min(neededForPage, merged.size());
-        List<AreaBasedListItem> pageItems = merged.subList(fromIndex, toIndex);
-
-        return new MergeOutcome(pageItems, totalCountApprox, hasNext);
-    }
-
-    private AreaBasedListResult callSource(SourceCall call, int numOfRows, int pageNo) {
-        return tourApiClient.getAreaBasedList(
-                call.regionCode().getLdongRegnCd(),
-                call.regionCode().getLdongSignguCd(),
-                call.contentTypeId(),
-                call.themeCode() != null ? call.themeCode().getLclsSystmLevel() : null,
-                call.themeCode() != null ? call.themeCode().getLclsSystmCd() : null,
-                numOfRows, pageNo);
-    }
-
-    // 병렬 실행 + 요청 전체 타임아웃 + 부분 실패 베스트 에포트(04_추천장소_API_인프라설계.md 3-4절).
-    private List<AreaBasedListResult> callSourcesInParallel(List<SourceCall> calls, int numOfRows, int pageNo) {
-        List<CompletableFuture<AreaBasedListResult>> futures = calls.stream()
-                .map(call -> CompletableFuture.supplyAsync(() -> callSource(call, numOfRows, pageNo), tourApiExecutor)
-                        .exceptionally(ex -> {
-                            log.warn("TourAPI 소스 호출 실패, 결과에서 제외: {}", ex.getMessage());
-                            return null;
-                        }))
+        List<PlaceSummaryDto> places = placeCacheRepository.search(criteria).stream()
+                .map(PlaceSummaryDto::from)
                 .toList();
+        long totalCount = placeCacheRepository.count(criteria);
+        boolean hasNext = criteria.offset() + places.size() < totalCount;
 
-        try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                    .get(PARALLEL_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            log.warn("TourAPI 병렬 호출 전체 타임아웃/실패: {}", e.getMessage());
-        }
+        return PlaceSearchResponse.builder()
+                .places(places)
+                .totalCount(totalCount)
+                .page(request.page())
+                .size(request.size())
+                .hasNext(hasNext)
+                .build();
+    }
 
-        List<AreaBasedListResult> results = futures.stream()
-                .map(future -> future.getNow(null))
-                .filter(Objects::nonNull)
+    // 요청 + 인메모리 캐시(지역코드/선호테마)를 캐시 조회용 파라미터 객체로 변환.
+    // category.contentTypeIds(): ATTRACTION=[12,14](관광지+문화시설, API 콤마 미지원 우회책이던 7:3 배분 제거),
+    // ACCOMMODATION=[32], RESTAURANT=[39] — SQL IN 절로 한 번에 조회.
+    private PlaceSearchCriteria toCriteria(PlaceSearchRequest request, List<DestinationRegionCode> regionCodes,
+            List<PreferredThemeLclsSystmCode> matchedThemes) {
+        List<PlaceSearchCriteria.RegionCode> regions = regionCodes.stream()
+                .map(rc -> new PlaceSearchCriteria.RegionCode(rc.getLdongRegnCd(), rc.getLdongSignguCd()))
                 .toList();
-
-        if (results.isEmpty()) {
-            throw new TourApiCallFailedException();
-        }
-        return results;
+        List<PlaceSearchCriteria.ThemeCode> themes = matchedThemes.stream()
+                .map(tc -> new PlaceSearchCriteria.ThemeCode(tc.getLclsSystmLevel(), tc.getLclsSystmCd()))
+                .toList();
+        return new PlaceSearchCriteria(request.destinationId(), request.category().contentTypeIds(),
+                regions, themes, request.page(), request.size());
     }
 
-    // contentid 기준으로 먼저 나온 것만 남기고 중복 제거하며 라운드로빈으로 인터리빙한다(3장 5단계).
-    private List<AreaBasedListItem> roundRobinMerge(List<AreaBasedListResult> results, int limit) {
-        List<List<AreaBasedListItem>> sources = results.stream().map(AreaBasedListResult::items).toList();
-        int[] cursors = new int[sources.size()];
-
-        LinkedHashMap<String, AreaBasedListItem> merged = new LinkedHashMap<>();
-        boolean progress = true;
-        while (progress && merged.size() < limit) {
-            progress = false;
-            for (int i = 0; i < sources.size(); i++) {
-                if (merged.size() >= limit) {
-                    break;
-                }
-                List<AreaBasedListItem> source = sources.get(i);
-                if (cursors[i] < source.size()) {
-                    AreaBasedListItem item = source.get(cursors[i]);
-                    cursors[i]++;
-                    merged.putIfAbsent(item.contentId(), item);
-                    progress = true;
-                }
-            }
-        }
-        return new ArrayList<>(merged.values());
-    }
-
-    private List<AreaBasedListItem> mergeDistinct(List<AreaBasedListItem> primary, List<AreaBasedListItem> secondary, int limit) {
-        LinkedHashMap<String, AreaBasedListItem> merged = new LinkedHashMap<>();
-        for (AreaBasedListItem item : primary) {
-            if (merged.size() >= limit) {
-                break;
-            }
-            merged.put(item.contentId(), item);
-        }
-        for (AreaBasedListItem item : secondary) {
-            if (merged.size() >= limit) {
-                break;
-            }
-            merged.putIfAbsent(item.contentId(), item);
-        }
-        return new ArrayList<>(merged.values());
-    }
-
-    // 요청 카테고리(ATTRACTION/ACCOMMODATION/RESTAURANT)를 선호테마 카테고리(ATTRACTION/ACCOMMODATION/RESTAURANT)로 변환(7-1절).
+    // 요청 카테고리(ATTRACTION/ACCOMMODATION/RESTAURANT)를 선호테마 카테고리로 변환해, 로그인 사용자의
+    // 해당 카테고리 선호테마만 골라 lclsSystm(레벨+코드) 매핑으로 평탄화한다. 매핑 없는 테마는 조용히 제외.
+    // 비로그인이면 빈 리스트 → 캐시 조회에서 테마 랭킹 없이 순수 셔플.
     private List<PreferredThemeLclsSystmCode> resolveMatchedThemes(UUID userId, PlaceCategory category) {
         if (userId == null) {
             return List.of();
@@ -356,26 +186,5 @@ public class PlaceService {
             case ACCOMMODATION -> PreferredThemeCategory.ACCOMMODATION;
             case RESTAURANT -> PreferredThemeCategory.RESTAURANT;
         };
-    }
-
-    private PlaceSearchResponse buildResponse(List<AreaBasedListItem> items, long totalCountApprox, boolean hasNext,
-            PlaceSearchRequest request) {
-        List<PlaceSummaryDto> places = items.stream().map(PlaceSummaryDto::from).toList();
-        return PlaceSearchResponse.builder()
-                .places(places)
-                .totalCount(totalCountApprox)
-                .page(request.page())
-                .size(request.size())
-                .hasNext(hasNext)
-                .build();
-    }
-
-    private record SourceCall(DestinationRegionCode regionCode, String contentTypeId, PreferredThemeLclsSystmCode themeCode) {
-    }
-
-    private record MergeOutcome(List<AreaBasedListItem> items, long totalCountApprox, boolean hasNext) {
-    }
-
-    private record ContentTypeResult(List<AreaBasedListItem> items, long totalCountApprox, boolean hasNext) {
     }
 }

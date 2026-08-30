@@ -71,6 +71,7 @@ public enum ErrorCode {
     // 키가 없으면 카카오가 401을 주는데, 그대로 두면 "검색이 안 된다"로만 보여 원인을 못 찾는다
     KAKAO_LOCAL_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "PLACE_003", "장소 검색이 설정되지 않았습니다. 서버에 api.kakao.rest-key가 필요합니다."),
     GOOGLE_PLACES_CALL_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "PLACE_004", "외부 장소 검색에 실패했습니다."),
+    PLACE_RECOMMENDATION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "PLACE_005", "추천 장소 조회에 일시적으로 실패했습니다."),
     ;
 
     private final HttpStatus httpStatus;
