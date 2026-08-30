@@ -20,7 +20,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * Google Places Text Search 클라이언트 — 키워드 검색 전용(추천 경로는 TourApiClient가 담당).
+ * Google Places Text Search 클라이언트 — 키워드 검색 전용(추천 장소 조회는 별도 경로).
  * project_ai/04_기능/place/06_키워드검색_API_인프라설계.md 3장.
  */
 @Component
@@ -76,7 +76,7 @@ public class GoogleSearchClient {
         return url.toString();
     }
 
-    /** 타임아웃/5xx는 1회만 재시도한다(서비스키 오류 등 4xx는 재시도해도 결과가 같으므로 즉시 실패 처리). TourApiClient와 동일 패턴. */
+    /** 타임아웃/5xx는 1회만 재시도한다(서비스키 오류 등 4xx는 재시도해도 결과가 같으므로 즉시 실패 처리). */
     private String callHttpWithRetry(String url) {
         try {
             return restTemplate.getForObject(URI.create(url), String.class);

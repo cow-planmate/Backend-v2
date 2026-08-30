@@ -81,6 +81,18 @@ spring:
       pool:
         size: ${SPRING_TASK_SCHEDULING_POOL_SIZE:4}
 
+# 공공데이터(TourAPI) 캐시 DB — 읽기 전용 2번째 DataSource.
+# spring.datasource(앱 DB, Flyway 관리)와 완전히 분리된 별도 인스턴스다.
+# 스키마는 이 앱이 관리하지 않는다(pg_restore + 최신화 잡이 채운다 — project_ai/04_기능/ai/01_인프라설계.md).
+# 로컬 기본값 = docker-compose.local.yml 의 tourdata-postgres(localhost:5433).
+# 운영: 서버 .env 에 TOURDATA_DATASOURCE_* 주입 + compose environment 패스스루.
+tourdata:
+  datasource:
+    url: ${TOURDATA_DATASOURCE_URL:jdbc:postgresql://localhost:5433/tourdata}
+    username: ${TOURDATA_DATASOURCE_USERNAME:postgres}
+    password: ${TOURDATA_DATASOURCE_PASSWORD:1234}
+    driver-class-name: org.postgresql.Driver
+
 notification:
   legacy-delivery:
     # Notification 서비스 컷오버 뒤에는 false. true인 동안은 Backend-v2가 협업 알림을
@@ -127,9 +139,6 @@ api:
   kakao:
     # 카카오 로컬(장소 검색) REST API 키. 지도 SDK의 JavaScript 키와 다른 키다.
     rest-key: ${KAKAO_REST_API_KEY:}
-  tour:
-    key: ${TOUR_API_KEY:}
-    base-url: ${TOUR_API_BASE_URL:https://apis.data.go.kr/B551011/KorService2}
   google:
     key: ${GOOGLE_PLACES_API_KEY:}
 
