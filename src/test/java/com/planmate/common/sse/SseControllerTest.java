@@ -24,9 +24,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 설계 문서(04_기능/실시간_알림/A_구독.md) 1장 발견사항 1 — 브라우저 네이티브 EventSource는
- * 커스텀 헤더를 못 붙이므로 /api/sse/ 경로에 한해 쿼리 파라미터 token 폴백이 필요하다.
- * 이 테스트는 그 폴백이 실제로 동작하는지, 그리고 다른 API로 새지 않는지(필터는 전역 공용 파일)를 함께 검증한다.
+ * SSE 구독의 인증 계약. 브라우저 EventSource 는 커스텀 헤더를 못 붙이므로 쿼리 파라미터 token
+ * 폴백이 필요한데, 그 폴백은 이제 게이트웨이가 처리한다 — 게이트웨이가 token 을 검증한 뒤
+ * X-User-Id/X-User-Role 로 바꿔 넣어주므로 이 서비스는 신원 헤더만 본다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -65,10 +65,11 @@ class SseControllerTest {
     // asyncDispatch 없이 request().asyncStarted() 확인 + 응답 바디 직접 조회로 충분하다.
     @Test
     @Timeout(10)
-    @DisplayName("Authorization 헤더로 구독하면 connect 이벤트를 받는다")
-    void subscribe_withHeader_succeeds() throws Exception {
+    @DisplayName("게이트웨이 신원 헤더로 구독하면 connect 이벤트를 받는다")
+    void subscribe_withIdentityHeaders_succeeds() throws Exception {
         MvcResult result = mockMvc.perform(get("/api/sse/subscribe")
-                        .header("Authorization", "Bearer " + accessToken))
+                        .header("X-User-Id", user.getUserId().toString())
+                        .header("X-User-Role", user.getRole().name()))
                 .andExpect(request().asyncStarted())
                 .andReturn();
 
@@ -76,27 +77,16 @@ class SseControllerTest {
     }
 
     @Test
-    @Timeout(10)
-    @DisplayName("헤더 없이 쿼리 파라미터 token만으로도 구독된다 — 브라우저 EventSource 대응")
-    void subscribe_withQueryParamToken_succeeds() throws Exception {
-        MvcResult result = mockMvc.perform(get("/api/sse/subscribe").param("token", accessToken))
-                .andExpect(request().asyncStarted())
-                .andReturn();
-
-        assertThat(result.getResponse().getContentAsString()).contains("connect");
-    }
-
-    @Test
-    @DisplayName("헤더도 쿼리 파라미터도 없으면 401")
-    void subscribe_noToken_unauthorized() throws Exception {
+    @DisplayName("신원 헤더가 없으면 401")
+    void subscribe_noIdentityHeaders_unauthorized() throws Exception {
         mockMvc.perform(get("/api/sse/subscribe"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    @DisplayName("SSE가 아닌 다른 API는 쿼리 파라미터 token 폴백이 적용되지 않는다 — 필터 수정 범위가 /api/sse/로 한정됐는지 확인")
-    void nonSseEndpoint_queryParamTokenNotAccepted() throws Exception {
-        mockMvc.perform(get("/api/user/profile").param("token", accessToken))
+    @DisplayName("쿼리 파라미터 token 은 더 이상 이 서비스에서 인증되지 않는다 — 게이트웨이가 변환한다")
+    void subscribe_withQueryParamTokenOnly_unauthorized() throws Exception {
+        mockMvc.perform(get("/api/sse/subscribe").param("token", accessToken))
                 .andExpect(status().isUnauthorized());
     }
 }
