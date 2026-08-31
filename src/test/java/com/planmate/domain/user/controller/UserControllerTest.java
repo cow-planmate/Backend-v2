@@ -882,7 +882,7 @@ class UserControllerTest {
         entityManager.flush();
         entityManager.clear(); // flush 먼저 해서 softDelete()를 반영한 뒤 캐시를 비워야 다음 조회가 실제로 DB에 SELECT를 태운다
 
-        // JwtAuthenticationFilter는 서명/만료만 확인하고 DB는 안 보므로, 탈퇴 후에도 같은 토큰은
+        // Gateway 인증도 토큰 서명/만료만 확인하고 DB는 안 보므로, 탈퇴 후에도 같은 토큰은
         // 인증 자체는 통과한다 — 그다음 Service의 userRepository.findById가 @SQLRestriction으로
         // 걸러내면서 UserNotFoundException(404)이 나는 것이지, 401이 나는 게 아니다.
         mockMvc.perform(get("/api/user/profile")

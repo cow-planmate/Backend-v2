@@ -3,7 +3,7 @@ package com.planmate.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.planmate.common.exception.ErrorCode;
 import com.planmate.common.exception.ErrorResponse;
-import com.planmate.security.JwtAuthenticationFilter;
+import com.planmate.security.GatewayAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -30,7 +30,7 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final GatewayAuthenticationFilter gatewayAuthenticationFilter;
     private final CorsConfigurationSource corsConfigurationSource;
     private final ObjectMapper objectMapper;
 
@@ -44,7 +44,7 @@ public class SecurityConfig {
                         .requestMatchers(SecurityWhitelist.PATHS.toArray(new String[0])).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(gatewayAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint())
                         .accessDeniedHandler(accessDeniedHandler()));
