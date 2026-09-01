@@ -85,3 +85,46 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # 이미지 태그를 매니페스트 레포에 커밋한다. ArgoCD 가 그걸 보고 배포한다.
+      #
+      # Watchtower(:latest) 경로는 그대로 둔다 — 컷오버 전까지 구 환경(planmatetest)이
+      # 계속 자동 갱신돼야 하기 때문이다. 컷오버 후 :latest push 와 함께 걷어낸다.
+      #
+      # 태그 형식은 위 metadata-action 의 type=sha,format=short 와 같아야 한다(sha-7자리).
+      # 어긋나면 존재하지 않는 태그를 커밋하고 파드가 ImagePullBackOff 로 멈춘다.
+      - name: Bump image tag in deploy repo
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_REPO_SSH_KEY }}
+          SERVICE: planmate-backend-v2
+        run: |
+          set -euo pipefail
+          TAG="sha-$(echo "${GITHUB_SHA}" | cut -c1-7)"
+
+          # 키는 러너 안에서만 산다. 600 이 아니면 ssh 가 거부한다.
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+
+          git clone --depth 1 git@github.com:cow-planmate/deploy.git /tmp/deploy
+          cd /tmp/deploy
+
+          # sed 로 한 줄만 바꾼다. 파이썬 히어독을 쓰지 않는 이유: YAML 블록 스칼라 안에서는
+          # 본문이 들여쓰기되는데, bash 는 들여쓴 히어독 종료자를 인식하지 못하고(<<- 는 탭만
+          # 벗긴다) 파이썬도 첫 줄에서 IndentationError 로 죽는다. 즉 반드시 실패한다.
+          #
+          # "name: cycle123/<서비스>" 바로 다음 줄(n)의 newTag 만 바꾼다.
+          before=$(grep -c "name: cycle123/${SERVICE}$" kustomization.yaml)
+          [ "$before" = "1" ] || { echo "kustomization.yaml 에서 ${SERVICE} 를 정확히 1개 찾지 못했다 (${before}개)"; exit 1; }
+          sed -i "\|name: cycle123/${SERVICE}\$|{n;s|newTag: .*|newTag: ${TAG}|}" kustomization.yaml
+
+          if git diff --quiet; then
+            echo "태그가 이미 ${TAG} 다 — 커밋할 것이 없다."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(${SERVICE}): ${TAG}"
+          # 4개 레포가 동시에 머지되면 push 가 부딪힌다. 한 번 rebase 하고 다시 민다.
+          git push || { git pull --rebase && git push; }
