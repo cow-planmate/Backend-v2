@@ -10,7 +10,6 @@ import org.springframework.data.redis.connection.RedisNode;
 import org.springframework.data.redis.connection.RedisPassword;
 import org.springframework.data.redis.connection.RedisSentinelConfiguration;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
-import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
@@ -19,13 +18,13 @@ import org.springframework.util.StringUtils;
 
 import com.planmate.common.sse.SseRedisSubscriber;
 
-import io.lettuce.core.ReadFrom;
 
 /**
  * Pub/Sub 전용 Redis 커넥션(SSE 알림)을 메인 커넥션 풀과 분리한다.
  * Sentinel 프로퍼티가 채워지면 코드 변경 없이 Sentinel 기반 HA 경로로 전환된다.
- * Sentinel 모드에서 메인(읽기/쓰기) 팩토리는 읽기를 레플리카로 분산하고,
- * Pub/Sub 팩토리는 마스터에만 연결한다(발행은 반드시 마스터로).
+ * Sentinel 모드에서도 모든 팩토리가 마스터를 읽고 쓴다 — 읽기 분산은 하지 않는다
+ * (이유는 buildReadWriteConnectionFactory 주석 참고). Pub/Sub 은 발행이 반드시
+ * 마스터로 가야 해서 애초에 분산 대상이 아니다.
  *
  * SharedSync 자체 RedisConfig(sharedSyncRedisConnectionFactory/pubSubConnectionFactory)는
  * Sentinel 디스커버리를 지원하지 않는다 — 두 빈 다 @ConditionalOnMissingBean(name=...)로 걸려 있어서
@@ -119,16 +118,19 @@ public class RedisConnectionConfig {
 
     /**
      * 요청 처리용 메인(읽기/쓰기) 커넥션 팩토리.
-     * Sentinel 모드에서는 REPLICA_PREFERRED로 읽기를 레플리카에 분산해
-     * 마스터 부하를 덜고 레플리카를 낭비하지 않는다(레플리카가 없으면 마스터로 폴백).
-     * Pub/Sub 커넥션과는 블로킹 구독이 메인 풀을 잠식하지 않도록 인스턴스를 분리한다.
+     * Sentinel 모드에서도 읽기를 레플리카로 분산하지 않는다(Lettuce 기본 = 마스터).
+     *
+     * <p>레플리카 분산을 뺀 이유: 이 팩토리로 읽는 데이터가 전부 "쓰고 곧바로 읽는" 것들이다.
+     * OAuth 로그인 코드는 발급 직후 리다이렉트에서 교환되고(수백 ms), 리프레시 토큰은 회전 시
+     * 삭제 직후 검증되며, 이메일 인증코드도 마찬가지다. 복제는 비동기라 레플리카에서 읽으면
+     * 방금 쓴 값이 아직 없거나 지운 값이 남아 있어 로그인이 간헐적으로 실패한다.
+     * SharedSync 협업편집 상태(sharedSyncRedisConnectionFactory)도 같은 이유로 마스터를 읽어야 한다.
+     *
+     * <p>Pub/Sub 커넥션과는 블로킹 구독이 메인 풀을 잠식하지 않도록 인스턴스를 분리한다.
      */
     private RedisConnectionFactory buildReadWriteConnectionFactory() {
         if (sentinelEnabled()) {
-            LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
-                    .readFrom(ReadFrom.REPLICA_PREFERRED)
-                    .build();
-            LettuceConnectionFactory factory = new LettuceConnectionFactory(sentinelConfiguration(), clientConfig);
+            LettuceConnectionFactory factory = new LettuceConnectionFactory(sentinelConfiguration());
             factory.afterPropertiesSet();
             return factory;
         }
