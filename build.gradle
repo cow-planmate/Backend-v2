@@ -78,6 +78,11 @@ dependencies {
     // Kafka notification outbox publisher
     implementation 'org.springframework.kafka:spring-kafka'
 
+    // 분산 스케줄러 락. 인스턴스를 2개 이상 띄우면 @Scheduled 가 노드마다 돌아
+    // 정리 잡이 중복 실행된다. 7.x 는 Boot 4 를 요구하므로 Boot 3.5 인 여기서는 6.x 를 쓴다.
+    implementation 'net.javacrumbs.shedlock:shedlock-spring:6.10.0'
+    implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:6.10.0'
+
     // Firebase Admin (FCM)
     implementation 'com.google.firebase:firebase-admin:9.3.0'
 
