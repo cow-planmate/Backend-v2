@@ -2,6 +2,7 @@ package com.planmate.domain.user.internal.outbox;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -26,6 +27,7 @@ public class UserOutboxPruner {
 
     /** 트래픽이 가장 적은 새벽에. 실패해도 다음 날 다시 돌면 되므로 재시도하지 않는다. */
     @Scheduled(cron = "0 0 4 * * *")
+    @SchedulerLock(name = "userOutboxPruner", lockAtLeastFor = "PT1M", lockAtMostFor = "PT30M")
     public void prune() {
         try {
             int deleted = outboxRepository.deleteOlderThan(Duration.ofDays(properties.getRetentionDays()));

@@ -5,6 +5,7 @@ import com.planmate.domain.route.repository.RouteTransitLaneCacheRepository;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -23,6 +24,7 @@ public class RouteCachePruner {
     private final RouteTransitLaneCacheRepository laneCacheRepository;
 
     @Scheduled(cron = "0 0 4 * * *")
+    @SchedulerLock(name = "routeCachePruner", lockAtLeastFor = "PT1M", lockAtMostFor = "PT30M")
     public void prune() {
         try {
             LocalDateTime now = LocalDateTime.now();
