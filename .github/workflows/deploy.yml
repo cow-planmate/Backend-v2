@@ -1,11 +1,13 @@
 name: Build & Push (Docker Hub)
 
-# main 에 push 되면 이미지를 빌드해 Docker Hub 로 push.
-# 서버(docker53)의 Watchtower 가 새 이미지를 감지해 자동 배포한다.
+# main / test 에 push 되면 이미지를 빌드해 Docker Hub 로 push 한다.
+#   main → :latest  (기존 경로 그대로)
+#   test → :test    (테스트 서버 planmatetest 전용)
+# 테스트 서버(planmatetest)의 Watchtower 는 :test 를 추종한다.
 
 on:
   push:
-    branches: [main]
+    branches: [main, test]
   workflow_dispatch:
 
 permissions:
@@ -73,7 +75,8 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=test,enable=${{ github.ref == 'refs/heads/test' }}
             type=sha,format=short
 
       - name: Build and push
@@ -94,6 +97,7 @@ jobs:
       # 태그 형식은 위 metadata-action 의 type=sha,format=short 와 같아야 한다(sha-7자리).
       # 어긋나면 존재하지 않는 태그를 커밋하고 파드가 ImagePullBackOff 로 멈춘다.
       - name: Bump image tag in deploy repo
+        if: github.ref == 'refs/heads/main'
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_REPO_SSH_KEY }}
           SERVICE: planmate-backend-v2
