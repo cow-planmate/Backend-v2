@@ -34,7 +34,10 @@ public class AiChatbotClientConfig {
             @Value("${ai.timeout.connect-ms:5000}") long connectMs,
             @Value("${ai.timeout.read-ms:40000}") long readMs) {
 
+        // HTTP/1.1 고정: JDK HttpClient 기본은 HTTP_2 라 uvicorn(HTTP/1.1 전용) 상대로 h2c 업그레이드를
+        // 시도하다 요청 바디가 유실되는 경우가 있다(FastAPI 가 body=null 로 422). planmate-ai 는 HTTP/1.1.
         HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofMillis(connectMs))
                 .build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
