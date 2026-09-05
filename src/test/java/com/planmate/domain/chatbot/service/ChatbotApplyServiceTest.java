@@ -53,6 +53,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -385,5 +386,73 @@ class ChatbotApplyServiceTest {
         assertThat(eventIds.get(0)).isNotBlank();
 
         verify(redisSyncService, times(6)).publish(eq("/topic/" + PLAN_ID), any());
+    }
+
+    // ---------- 캐시 열화 내성 (10_E2E…기록.md 발견 A1 회귀) ----------
+
+    @Test
+    @DisplayName("삭제 블록의 before 스냅샷이 캐시 미스로 null — NPE 없이 삭제·COMPOSITE 기록·브로드캐스트 정상 (Fix 3a)")
+    void deleteBlock_beforeSnapshotCacheMiss_noNpe_stillAppliesAndRecords() {
+        stubSession("sess-1");
+        stubPlan(snapshot(
+                List.of(savedTimetable(1, DAY1)),
+                List.of(savedBlock(11, 1, "경복궁"), savedBlock(31, 1, "곧삭제됨"))));
+        given(chatbotBaselineStore.find(PLAN_ID, USER_ID)).willReturn(null);
+
+        // ⚠️ 캐시 열화 재현 — 삭제 대상 블록의 findDtoById 가 null 을 돌려준다.
+        given(timeTablePlaceBlockCache.findDtoById(31L)).willReturn(null);
+        given(sharedTimeTablePlaceBlockService.delete(any())).willReturn(new WTimeTablePlaceBlockResponse());
+
+        ChatbotApplyResponse response = service.apply(PLAN_ID, USER_ID,
+                request(List.of(targetTimetable(1L, DAY1)), List.of(targetBlock(11L, 1L, DAY1, "경복궁"))));
+
+        // 예외로 죽지 않고 200 성공
+        assertThat(response.success()).isTrue();
+
+        // 삭제는 그대로 실행
+        verify(sharedTimeTablePlaceBlockService).delete(any());
+
+        // undo 도 기록됨 (record 에 도달) — before 에 null 은 안 들어감
+        ArgumentCaptor<HistoryAction> captor = ArgumentCaptor.forClass(HistoryAction.class);
+        verify(historyService).record(eq(PLAN_ID.toString()), captor.capture());
+        HistoryAction composite = captor.getValue();
+        assertThat(composite.getType()).isEqualTo(HistoryAction.Type.COMPOSITE);
+        assertThat(composite.getSubActions()).hasSize(1);
+        HistoryAction deleteAction = composite.getSubActions().get(0);
+        assertThat(deleteAction.getType()).isEqualTo(HistoryAction.Type.DELETE);
+        assertThat(deleteAction.getBeforeData()).isEmpty(); // null 원소가 걸러져 빈 리스트
+
+        // 브로드캐스트도 정상 시도 (빈 리스트라도 발행은 함)
+        verify(redisSyncService, times(1)).publish(eq("/topic/" + PLAN_ID), any());
+    }
+
+    @Test
+    @DisplayName("브로드캐스트(publish)가 예외를 던져도 — [반영] 은 성공, COMPOSITE 는 기록됨 (Fix 1)")
+    void broadcastThrows_stillSucceedsAndRecordsComposite() {
+        stubSession("sess-1");
+        stubPlan(snapshot(List.of(savedTimetable(1, DAY1)), List.of(savedBlock(11, 1, "경복궁"))));
+        given(chatbotBaselineStore.find(PLAN_ID, USER_ID)).willReturn("irrelevant-baseline");
+
+        given(timeTablePlaceBlockCache.findDtoById(11L)).willReturn(
+                new TimeTablePlaceBlockDto(11L, 1L, null, "경복궁", null, null, null, null, null, null,
+                        T09, T10, BlockCategory.ATTRACTION, "memo"));
+        WTimeTablePlaceBlockResponse updateResponse = new WTimeTablePlaceBlockResponse();
+        updateResponse.setTimeTablePlaceBlockDtos(List.of(
+                new TimeTablePlaceBlockDto(11L, 1L, null, "창덕궁", null, null, null, null, null, null,
+                        T09, T10, BlockCategory.ATTRACTION, "memo")));
+        given(sharedTimeTablePlaceBlockService.update(any())).willReturn(updateResponse);
+
+        // ⚠️ Redis 발행이 터진다 (ProtoSyncCodec NPE, Redis 다운 등)
+        willThrow(new RuntimeException("codec/redis 실패")).given(redisSyncService).publish(any(), any());
+
+        ChatbotApplyResponse response = service.apply(PLAN_ID, USER_ID,
+                request(List.of(targetTimetable(1L, DAY1)), List.of(targetBlock(11L, 1L, DAY1, "창덕궁"))));
+
+        // 브로드캐스트 실패는 무시 — [반영] 자체는 성공
+        assertThat(response.success()).isTrue();
+
+        // 적용도 undo 기록도 정상 (broadcast 예외가 흐름을 끊지 않음)
+        verify(sharedTimeTablePlaceBlockService).update(any());
+        verify(historyService).record(eq(PLAN_ID.toString()), any(HistoryAction.class));
     }
 }

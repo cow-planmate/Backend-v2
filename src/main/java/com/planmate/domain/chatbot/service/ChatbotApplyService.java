@@ -26,6 +26,7 @@ import com.sharedsync.shared.sync.RedisSyncService;
 import com.sharedsync.shared.transport.WebSocketSessionRegistry;
 import com.sharedsync.shared.transport.WebSocketSyncSessionContext;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import sharedsync.cache.TimeTableCache;
@@ -43,6 +44,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -58,6 +60,7 @@ import java.util.UUID;
  *
  * <p>설계: project_ai/04_기능/ai/07_반영_reconcile_설계.md.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatbotApplyService {
@@ -274,9 +277,18 @@ public class ChatbotApplyService {
         if (diff.deleteBlockIds().isEmpty()) {
             return;
         }
+        // 캐시가 열화된 상태(공유 트랜잭션 오염 등)에서 findDtoById 가 null 을 반환할 수 있다.
+        // null 원소가 그대로 broadcast·HistoryAction 으로 흘러가면 ProtoSyncCodec 이 NPE 를 던져
+        // [반영] 전체가 500 + 부분 적용 + undo 미기록으로 깨진다(실측). null 은 걸러내고 경고만 남긴다.
         List<TimeTablePlaceBlockDto> before = diff.deleteBlockIds().stream()
                 .map(timeTablePlaceBlockCache::findDtoById)
+                .filter(Objects::nonNull)
                 .toList();
+        if (before.size() < diff.deleteBlockIds().size()) {
+            log.warn("[chatbot-apply] 삭제 블록 before 스냅샷 일부 유실(캐시 미스) planId={} 요청={} 확보={} "
+                    + "— 삭제는 진행하되 해당 블록의 브로드캐스트·undo 복원은 누락됨", planId,
+                    diff.deleteBlockIds().size(), before.size());
+        }
         sharedTimeTablePlaceBlockService.delete(blockDeleteRequest(planId, diff.deleteBlockIds()));
         subActions.add(blockHistoryAction(HistoryAction.Type.DELETE, before, null, eventId));
         broadcast(planId, eventId, "timetableplaceblock", "delete", "timeTablePlaceBlockDtos", before);
@@ -287,9 +299,15 @@ public class ChatbotApplyService {
         if (diff.deleteTimeTableIds().isEmpty()) {
             return;
         }
+        // applyDeleteBlocks 와 동일 — 캐시 미스 시 null 원소가 코덱 NPE 를 유발하므로 걸러낸다.
         List<TimeTableDto> before = diff.deleteTimeTableIds().stream()
                 .map(timeTableCache::findDtoById)
+                .filter(Objects::nonNull)
                 .toList();
+        if (before.size() < diff.deleteTimeTableIds().size()) {
+            log.warn("[chatbot-apply] 삭제 타임테이블 before 스냅샷 일부 유실(캐시 미스) planId={} 요청={} 확보={}",
+                    planId, diff.deleteTimeTableIds().size(), before.size());
+        }
         sharedTimeTableService.delete(timeTableDeleteRequest(planId, diff.deleteTimeTableIds()));
         subActions.add(timeTableHistoryAction(HistoryAction.Type.DELETE, before, null, eventId));
         broadcast(planId, eventId, "timetable", "delete", "timeTableDtos", before);
@@ -376,7 +394,14 @@ public class ChatbotApplyService {
 
     private void broadcast(UUID planId, String eventId, String entity, String action, String dtoFieldName,
                             List<?> dtos) {
-        redisSyncService.publish("/topic/" + planId,
-                new SyncOutbound.Entities(eventId, action, entity, false, dtoFieldName, dtos));
+        // 브로드캐스트(협업자 실시간 알림) 실패가 [반영] 자체를 실패시키면 안 된다 — reconcile·적용은
+        // 이미 성공했고 undo 도 기록됐다. 협업자는 다음 동기화에서 따라잡는다. best-effort (설계 §10-2).
+        try {
+            redisSyncService.publish("/topic/" + planId,
+                    new SyncOutbound.Entities(eventId, action, entity, false, dtoFieldName, dtos));
+        } catch (RuntimeException e) {
+            log.warn("[chatbot-apply] 브로드캐스트 실패 planId={} entity={} action={} — 무시하고 계속",
+                    planId, entity, action, e);
+        }
     }
 }
