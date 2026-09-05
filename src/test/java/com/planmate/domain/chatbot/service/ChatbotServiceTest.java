@@ -7,6 +7,7 @@ import com.planmate.common.exception.domain.ChatbotAiUnavailableException;
 import com.planmate.common.exception.domain.PlanAccessDeniedException;
 import com.planmate.domain.chatbot.client.AiChatbotClient;
 import com.planmate.domain.chatbot.dto.ChatbotTurnRequest;
+import com.planmate.domain.chatbot.support.ChatbotBaselineStore;
 import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
@@ -51,6 +52,8 @@ class ChatbotServiceTest {
     private UserPreferredThemeRepository userPreferredThemeRepository;
     @Mock
     private AiChatbotClient aiChatbotClient;
+    @Mock
+    private ChatbotBaselineStore chatbotBaselineStore;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private ChatbotService chatbotService;
@@ -58,7 +61,8 @@ class ChatbotServiceTest {
     @BeforeEach
     void setUp() {
         chatbotService = new ChatbotService(planService, destinationRegionCodeCache,
-                preferredThemeLclsSystmCache, userPreferredThemeRepository, aiChatbotClient, objectMapper);
+                preferredThemeLclsSystmCache, userPreferredThemeRepository, aiChatbotClient, objectMapper,
+                chatbotBaselineStore);
     }
 
     // ---------- fixtures ----------
@@ -126,6 +130,21 @@ class ChatbotServiceTest {
         assertThat(body.get("userContext").has("preferredThemes")).isTrue();
         assertThat(body.get("recentMessages")).hasSize(2);
         assertThat(body.get("recentMessages").get(0).asText()).isEqualTo("부산 바다 보이는 카페");
+    }
+
+    @Test
+    @DisplayName("이 턴의 planContext 지문을 [반영] 충돌 감지용 baseline 으로 저장한다 (07 §10-1-1 T2)")
+    void chat_savesBaselineFingerprint() {
+        stubPlan();
+        given(destinationRegionCodeCache.get(DESTINATION_ID)).willReturn(List.of(regionCode("26", null)));
+        given(userPreferredThemeRepository.findByUserUserId(USER_ID)).willReturn(List.of());
+        given(aiChatbotClient.call(any(), any())).willReturn(objectMapper.createObjectNode());
+
+        chatbotService.chat(PLAN_ID, USER_ID, request(null, null, null));
+
+        ArgumentCaptor<String> fingerprintCaptor = ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(chatbotBaselineStore).save(eq(PLAN_ID), eq(USER_ID), fingerprintCaptor.capture());
+        assertThat(fingerprintCaptor.getValue()).isNotBlank().hasSize(64); // SHA-256 hex
     }
 
     // ---------- userContext 조립 분기 ----------

@@ -10,6 +10,8 @@ import com.planmate.domain.chatbot.dto.RegionCodeDto;
 import com.planmate.domain.chatbot.dto.UserContextDto;
 import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
+import com.planmate.domain.chatbot.support.ChatbotBaselineStore;
+import com.planmate.domain.chatbot.support.PlanContentFingerprint;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
 import com.planmate.domain.plan.service.PlanService;
 import com.planmate.domain.theme.cache.PreferredThemeLclsSystmCache;
@@ -45,10 +47,16 @@ public class ChatbotService {
     private final UserPreferredThemeRepository userPreferredThemeRepository;
     private final AiChatbotClient aiChatbotClient;
     private final ObjectMapper objectMapper;
+    private final ChatbotBaselineStore chatbotBaselineStore;
 
     @PreAuthorize("@planAccessValidator.validateMember(#planId, authentication.principal)")
     public JsonNode chat(UUID planId, UUID userId, ChatbotTurnRequest request) {
         GetCompletePlanResponse planContext = planService.getCompletePlan(userId, planId);
+
+        // [반영](④-2) 충돌 감지용 baseline. 이 턴이 마지막 챗 턴일 수 있으므로 매 턴 덮어쓴다
+        // (07_반영_reconcile_설계.md §10-1-1 T2).
+        chatbotBaselineStore.save(planId, userId, PlanContentFingerprint.of(objectMapper, planContext));
+
         UserContextDto userContext = assembleUserContext(userId, planContext.planFrame().destinationId());
 
         ObjectNode body = objectMapper.createObjectNode();
