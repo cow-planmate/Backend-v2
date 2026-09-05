@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.planmate'
 version = '0.0.1-SNAPSHOT'
-def sharedSyncVersion = 'd942daa'
+def sharedSyncVersion = '5db644c'
 // buf.build/planmate/proto 의 모듈 커밋. **Backend-v2 / Community / Social / Notification
 // 네 서비스가 반드시 같은 값이어야 한다.** 알림 이벤트 계약이 넷 모두에 걸쳐 있다.
 def protoCommit = '20260814100725.145b6cc42659'
