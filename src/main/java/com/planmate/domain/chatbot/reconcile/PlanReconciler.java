@@ -172,8 +172,8 @@ public class PlanReconciler {
                     || !Objects.equals(matched.placeAddress(), b.placeAddress())
                     || !Objects.equals(matched.placeThumbnailUrl(), b.placeThumbnailUrl())
                     || !Objects.equals(matched.placeCopyrightDivCd(), b.placeCopyrightDivCd())
-                    || !Objects.equals(matched.latitude(), b.latitude())
-                    || !Objects.equals(matched.longitude(), b.longitude())
+                    || !bigDecimalEquals(matched.latitude(), b.latitude())
+                    || !bigDecimalEquals(matched.longitude(), b.longitude())
                     || !Objects.equals(matched.blockStartTime(), b.blockStartTime())
                     || !Objects.equals(matched.blockEndTime(), b.blockEndTime())
                     || matched.blockCategory() != b.blockCategory();
@@ -192,5 +192,20 @@ public class PlanReconciler {
                 .toList();
 
         return new BlockDiff(creates, updates, deleteIds);
+    }
+
+    /**
+     * {@code BigDecimal.equals()}는 scale 까지 비교해 {@code 129.16}과 {@code 129.1600000}을
+     * 다른 값으로 본다. 저장본의 latitude/longitude는 앱 DB 컬럼({@code numeric(10,8)}/
+     * {@code numeric(11,8)}, 스케일 고정)에서 오지만, target 은 {@code ChatbotApplyService}가
+     * tourdata 를 {@code double} 로 재조회해 {@code BigDecimal.valueOf(double)}로 만든 값이라
+     * 스케일이 들쭉날쭉하다 — 같은 좌표인데도 이 메서드 없이 비교하면 매번 "변경됨"으로 오판해
+     * 불필요한 UPDATE 가 나간다(실측: 08_통합_E2E_테스트_기록.md §2 발견).
+     */
+    private static boolean bigDecimalEquals(BigDecimal a, BigDecimal b) {
+        if (a == null || b == null) {
+            return a == b;
+        }
+        return a.compareTo(b) == 0;
     }
 }

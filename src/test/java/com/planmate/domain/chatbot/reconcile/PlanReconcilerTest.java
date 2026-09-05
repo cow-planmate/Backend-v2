@@ -77,6 +77,28 @@ class PlanReconcilerTest {
     }
 
     @Test
+    @DisplayName("블록 — latitude/longitude 가 scale 만 다르고 값은 같음(BigDecimal.equals 함정) → skip"
+            + " (08_통합_E2E_테스트_기록.md 실측 버그 회귀 방지)")
+    void block_sameCoordinateDifferentScale_skipped() {
+        TimetablePlaceBlockDetailDto savedBlock = new TimetablePlaceBlockDetailDto(11L, 1L, "P1", "경복궁", "12",
+                "addr", "thumb", "Type3", new BigDecimal("35.15000000"), new BigDecimal("129.00000000"),
+                T09, T10, BlockCategory.ATTRACTION, "memo");
+        // 저장본은 DB numeric(10,8) 고정 스케일(8) — target 은 rehydrate 과정에서 double 왕복을 거쳐
+        // BigDecimal.valueOf(double) 로 만들어져 스케일이 짧아질 수 있다. 값은 수학적으로 동일.
+        ChatbotApplyBlockDto targetBlockDto = new ChatbotApplyBlockDto(11L, 1L, DAY1, "P1", "경복궁", "12",
+                "addr", "thumb", "Type3", BigDecimal.valueOf(35.15), BigDecimal.valueOf(129.0),
+                T09, T10, BlockCategory.ATTRACTION, "memo");
+
+        PlanSnapshot saved = snapshot(List.of(timetable(1, DAY1)), List.of(savedBlock));
+        ChatbotApplyPlanDto target = target(List.of(targetTimetable(1L, DAY1)), List.of(targetBlockDto));
+
+        var result = reconciler.reconcile(saved, target);
+
+        assertThat(result.updateBlocks()).isEmpty();
+        assertThat(result.isEmpty()).isTrue();
+    }
+
+    @Test
     @DisplayName("블록 — blockId 있고 필드 다름(장소 교체) → UPDATE")
     void block_changed_update() {
         PlanSnapshot saved = snapshot(List.of(timetable(1, DAY1)), List.of(block(11, 1, "경복궁")));
