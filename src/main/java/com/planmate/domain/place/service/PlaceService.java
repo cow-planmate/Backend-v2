@@ -2,12 +2,10 @@ package com.planmate.domain.place.service;
 
 import com.planmate.common.exception.domain.DestinationNotFoundException;
 import com.planmate.common.exception.domain.KakaoLocalNotConfiguredException;
-import com.planmate.common.externalAPI.GooglePlaceImageWorker;
 import com.planmate.common.externalAPI.GoogleSearchClient;
 import com.planmate.common.externalAPI.GoogleSearchClient.GoogleTextSearchItem;
 import com.planmate.common.externalAPI.GoogleSearchClient.GoogleTextSearchResult;
 import com.planmate.common.externalAPI.KakaoLocalClient;
-import com.planmate.common.storage.GooglePlaceImageStorage;
 import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
 import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
@@ -49,8 +47,6 @@ public class PlaceService {
     private final KakaoLocalClient kakaoLocalClient;
     private final DestinationRepository destinationRepository;
     private final GoogleSearchClient googleSearchClient;
-    private final GooglePlaceImageStorage googlePlaceImageStorage;
-    private final GooglePlaceImageWorker googlePlaceImageWorker;
 
     @Transactional(readOnly = true)
     /**
@@ -106,11 +102,8 @@ public class PlaceService {
     private PlaceTextSearchResponse buildTextSearchResponse(GoogleTextSearchResult result) {
         List<PlaceTextSearchResultDto> places = new ArrayList<>();
         for (GoogleTextSearchItem item : result.items()) {
-            String thumbnailUrl = googlePlaceImageStorage.findExistingUrl(item.placeId());
-            if (thumbnailUrl == null) {
-                // 응답은 이 처리를 기다리지 않는다 — 실패해도 검색 자체는 정상 반환(fire-and-forget).
-                googlePlaceImageWorker.fetchAndUploadAsync(item.placeId(), item.photoReference());
-            }
+            String thumbnailUrl = "/api/image/place/" + org.springframework.web.util.UriUtils
+                    .encodePathSegment(item.placeId(), java.nio.charset.StandardCharsets.UTF_8);
             places.add(PlaceTextSearchResultDto.from(item, thumbnailUrl));
         }
         return PlaceTextSearchResponse.builder()

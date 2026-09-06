@@ -114,7 +114,11 @@ class PlaceTextSearchIntegrationTest {
         PlaceTextSearchResponse response = objectMapper.readValue(body, PlaceTextSearchResponse.class);
         assertThat(response.places()).isNotEmpty();
 
-        // 비동기 파이프라인(Details→Photo→WebP 변환→MinIO 업로드)이 끝날 때까지 폴링한다.
+        // 브라우저처럼 이미지 API를 요청해야 다운로드와 비동기 저장이 시작된다.
+        for (PlaceTextSearchResultDto place : response.places()) {
+            mockMvc.perform(get(place.thumbnailUrl()));
+        }
+        // 비동기 WebP 저장 완료를 기다린다.
         String uploadedUrl = null;
         long deadline = System.currentTimeMillis() + 20_000;
         while (System.currentTimeMillis() < deadline) {
