@@ -73,6 +73,12 @@ public enum ErrorCode {
     // 추천장소(②)·장소상세(③) 공용 — tourdata 캐시 DB 조회 실패. 05_장소상세_API_설계.md §15-1로 문구 일반화.
     PLACE_RECOMMENDATION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "PLACE_005", "장소 정보 조회에 일시적으로 실패했습니다."),
     PLACE_DETAIL_NOT_FOUND(HttpStatus.NOT_FOUND, "PLACE_006", "장소 상세 정보를 찾을 수 없습니다."),
+
+    // 챗봇 (planmate-ai 연동) — project_ai/04_기능/ai/06_챗봇_연동_설계.md §5-4
+    CHATBOT_AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "CHATBOT_001", "AI 서버가 일시적으로 응답하지 못했어요. 잠시 후 다시 시도해주세요."),
+    CHATBOT_AI_MISCONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "CHATBOT_002", "AI 연동 설정 오류입니다."),
+    // [반영] reconcile (④-2) — project_ai/04_기능/ai/07_반영_reconcile_설계.md §9-1
+    CHATBOT_APPLY_SESSION_INVALID(HttpStatus.CONFLICT, "CHATBOT_003", "반영 세션이 유효하지 않습니다. 페이지를 새로고침한 뒤 다시 시도해주세요."),
     ;
 
     private final HttpStatus httpStatus;
