@@ -124,13 +124,13 @@ public class ChatbotApplyService {
         ReconcileResult diff = planReconciler.reconcile(saved, target);
         if (diff.isEmpty()) {
             // 중복 제출 등으로 target == saved. 빈 COMPOSITE 를 undo 스택에 안 쌓는다(설계 §5-6).
-            return new ChatbotApplyResponse(true, conflictDetected);
+            return new ChatbotApplyResponse(conflictDetected);
         }
 
         // 4~6. 적용 + 복합 HistoryAction + 브로드캐스트
         applyDiff(planId, saved, diff);
 
-        return new ChatbotApplyResponse(true, conflictDetected);
+        return new ChatbotApplyResponse(conflictDetected);
     }
 
     private boolean detectConflict(UUID planId, UUID userId, PlanSnapshot saved) {

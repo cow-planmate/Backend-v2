@@ -194,7 +194,7 @@ class ChatbotApplyServiceTest {
         ChatbotApplyResponse response =
                 service.apply(PLAN_ID, USER_ID, request(List.of(targetTimetable(1L, DAY1)), List.of()));
 
-        assertThat(response.success()).isTrue();
+        assertThat(response).isNotNull();
     }
 
     @Test
@@ -207,7 +207,7 @@ class ChatbotApplyServiceTest {
         ChatbotApplyResponse response =
                 service.apply(PLAN_ID, USER_ID, request(List.of(targetTimetable(1L, DAY1)), List.of()));
 
-        assertThat(response.success()).isTrue();
+        assertThat(response).isNotNull();
     }
 
     // ---------- 충돌 감지 (설계 §10-1-1) ----------
@@ -251,7 +251,6 @@ class ChatbotApplyServiceTest {
         ChatbotApplyResponse response = service.apply(PLAN_ID, USER_ID,
                 request(List.of(targetTimetable(1L, DAY1)), List.of(targetBlock(11L, 1L, DAY1, "경복궁"))));
 
-        assertThat(response.success()).isTrue();
         assertThat(response.conflictDetected()).isTrue(); // baseline null
 
         verifyNoInteractions(historyService, redisSyncService, sharedTimeTableService,
@@ -279,7 +278,7 @@ class ChatbotApplyServiceTest {
         ChatbotApplyResponse response = service.apply(PLAN_ID, USER_ID,
                 request(List.of(targetTimetable(1L, DAY1)), List.of(targetBlock(11L, 1L, DAY1, "창덕궁"))));
 
-        assertThat(response.success()).isTrue();
+        assertThat(response).isNotNull();
 
         ArgumentCaptor<HistoryAction> captor = ArgumentCaptor.forClass(HistoryAction.class);
         verify(historyService).record(eq(PLAN_ID.toString()), captor.capture());
@@ -358,7 +357,7 @@ class ChatbotApplyServiceTest {
 
         ChatbotApplyResponse response = service.apply(PLAN_ID, USER_ID, req);
 
-        assertThat(response.success()).isTrue();
+        assertThat(response).isNotNull();
 
         InOrder inOrder = inOrder(sharedTimeTableService, sharedTimeTablePlaceBlockService);
         inOrder.verify(sharedTimeTableService).create(any());
@@ -407,7 +406,7 @@ class ChatbotApplyServiceTest {
                 request(List.of(targetTimetable(1L, DAY1)), List.of(targetBlock(11L, 1L, DAY1, "경복궁"))));
 
         // 예외로 죽지 않고 200 성공
-        assertThat(response.success()).isTrue();
+        assertThat(response).isNotNull();
 
         // 삭제는 그대로 실행
         verify(sharedTimeTablePlaceBlockService).delete(any());
@@ -449,7 +448,7 @@ class ChatbotApplyServiceTest {
                 request(List.of(targetTimetable(1L, DAY1)), List.of(targetBlock(11L, 1L, DAY1, "창덕궁"))));
 
         // 브로드캐스트 실패는 무시 — [반영] 자체는 성공
-        assertThat(response.success()).isTrue();
+        assertThat(response).isNotNull();
 
         // 적용도 undo 기록도 정상 (broadcast 예외가 흐름을 끊지 않음)
         verify(sharedTimeTablePlaceBlockService).update(any());

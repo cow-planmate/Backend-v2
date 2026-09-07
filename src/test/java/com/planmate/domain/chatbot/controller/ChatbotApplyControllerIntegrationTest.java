@@ -229,7 +229,9 @@ class ChatbotApplyControllerIntegrationTest {
 
         assertThat(result.getResponse().getStatus()).isEqualTo(200);
         var body = objectMapper.readTree(result.getResponse().getContentAsString());
-        assertThat(body.get("success").asBoolean()).isTrue();
+        // 바디는 conflictDetected 하나뿐 — 성공은 200 자체로 표현, success 플래그 없음(기능_구현_표준 §1·§8).
+        assertThat(body.has("success")).isFalse();
+        assertThat(body.get("conflictDetected").isBoolean()).isTrue();
 
         // ① 브로드캐스트 수신 — 같은 WS 클라이언트(요청자 자신)에도 echo 된다(설계 §4 단계6 — 자기 자신 특별취급 안 함).
         DynamicMessage broadcast = client.awaitFrame("sync",
