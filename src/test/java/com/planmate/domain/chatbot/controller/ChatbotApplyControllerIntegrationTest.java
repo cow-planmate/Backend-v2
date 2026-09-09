@@ -27,6 +27,7 @@ import com.planmate.security.JwtTokenProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -70,6 +71,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 이어지는지를 본다. 프레임 조립/파싱은 {@code SharedSyncRawWebSocketIntegrationTest} 패턴을 그대로
  * 재사용한다(같은 wire 프로토콜).
  */
+// tourdata 캐시 DB(2번째 데이터소스, localhost:5433)에 붙는다 — ChatbotApplyService 1단계
+// rehydratePlaceFields → PlaceDetailRepository.fetchBase. CI 러너엔 그 컨테이너가 없어
+// (없으면 PlaceCacheQueryException → 503) 기본 test 에서 제외한다. 로컬은 ./gradlew externalTest.
+@Tag("external")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "sharedsync.websocket.transport=websocket"
 })
