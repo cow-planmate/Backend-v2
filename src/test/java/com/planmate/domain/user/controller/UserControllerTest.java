@@ -43,7 +43,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -863,25 +862,22 @@ class UserControllerTest {
     }
 
     @Test
-    @DisplayName("회원 탈퇴 성공 - 204, 하드 삭제가 아니라 소프트 삭제(row는 물리적으로 남고 deleted_at만 채워짐)")
-    void resignAccount_success_softDeletesNotHardDeletes() throws Exception {
+    @DisplayName("회원 탈퇴 성공 - 204, 유예기간 없이 즉시 하드 삭제(row 자체가 물리적으로 사라짐)")
+    void resignAccount_success_hardDeletesImmediately() throws Exception {
         mockMvc.perform(delete("/api/user/account")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isNoContent());
 
-        // @SQLRestriction은 SQL 레벨 필터라 이미 1차 캐시에 올라온 관리 상태 엔티티는 그대로 반환한다.
-        // 실제로 새로 SELECT를 태워야(= 운영 환경의 새 요청/새 영속성 컨텍스트와 동일한 조건) 걸러지는지
-        // 확인할 수 있으므로, flush로 softDelete()를 먼저 DB에 반영한 뒤 캐시를 비우고 다시 조회한다.
-        // clear()만 먼저 하면 아직 flush 안 된 softDelete() 변경 자체가 유실된다(그룹 A에서 만난 것과 같은 종류).
         entityManager.flush();
         entityManager.clear();
         assertThat(userRepository.findById(testUser.getUserId())).isEmpty();
 
-        // 그러나 실제 DB 행은 물리적으로 남아있고 deleted_at만 채워짐 — 하드 삭제(deleteById)가 아님을 실측
-        LocalDateTime deletedAt = jdbcTemplate.queryForObject(
-                "SELECT deleted_at FROM users WHERE user_id = ?",
-                LocalDateTime.class, testUser.getUserId());
-        assertThat(deletedAt).isNotNull();
+        // 실제 DB 행 자체가 물리적으로 사라졌는지 실측 — deleted_at만 채워진 게 아니라 SELECT 결과가 0건이어야 한다
+        // (project_ai/04_기능/마이페이지/C_계정_관리_하드삭제_전환.md — 지체없이 파기 원칙)
+        Integer remaining = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE user_id = ?",
+                Integer.class, testUser.getUserId());
+        assertThat(remaining).isZero();
     }
 
     @Test
@@ -891,11 +887,11 @@ class UserControllerTest {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isNoContent());
         entityManager.flush();
-        entityManager.clear(); // flush 먼저 해서 softDelete()를 반영한 뒤 캐시를 비워야 다음 조회가 실제로 DB에 SELECT를 태운다
+        entityManager.clear(); // flush 먼저 해서 하드 삭제를 반영한 뒤 캐시를 비워야 다음 조회가 실제로 DB에 SELECT를 태운다
 
         // Gateway 인증도 토큰 서명/만료만 확인하고 DB는 안 보므로, 탈퇴 후에도 같은 토큰은
-        // 인증 자체는 통과한다 — 그다음 Service의 userRepository.findById가 @SQLRestriction으로
-        // 걸러내면서 UserNotFoundException(404)이 나는 것이지, 401이 나는 게 아니다.
+        // 인증 자체는 통과한다 — 그다음 Service의 userRepository.findById가 행 자체가 없어
+        // UserNotFoundException(404)이 나는 것이지, 401이 나는 게 아니다.
         mockMvc.perform(get("/api/user/profile")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isNotFound())
@@ -903,8 +899,8 @@ class UserControllerTest {
     }
 
     @Test
-    @DisplayName("회원 탈퇴 성공 - 탈퇴해도 소유했던 플랜은 그대로 남아 계속 조회됨(공유 플랜 보호, 연관 데이터 안 건드림)")
-    void resignAccount_success_ownedPlanRemainsIntact() throws Exception {
+    @DisplayName("회원 탈퇴 성공 - 소유했던 플랜은 CASCADE로 함께 삭제됨(다른 협업자의 참여기록도 같이 삭제, 알려진 트레이드오프)")
+    void resignAccount_success_ownedPlanCascadeDeleted() throws Exception {
         Destination destination = destinationRepository.save(Destination.builder()
                 .destinationName("destination-" + UUID.randomUUID())
                 .latitude(new BigDecimal("37.56330000"))
@@ -919,6 +915,15 @@ class UserControllerTest {
                 .destination(destination)
                 .build());
         planMemberRepository.save(PlanMember.builder().plan(ownedPlan).user(testUser).role(PlanMemberRole.OWNER).build());
+        // fixture를 flush 후 clear — Plan/PlanMember가 세션에 managed 상태로 남아 testUser를
+        // non-nullable @ManyToOne(user)로 계속 참조하고 있으면, resignAccount() 안에서 같은 세션의
+        // testUser가 REMOVE 큐에 들어가는 순간 Hibernate의 flush-time nullability 체크가 "관리되지
+        // 않는 연관관계 대상"으로 오인해 TransientObjectException을 던진다(운영에선 플랜 생성과 탈퇴가
+        // 별개의 이미 커밋·종료된 트랜잭션이라 세션을 공유하지 않으므로 일어나지 않는, 테스트 전용 문제).
+        // flush만으로는 Plan/PlanMember가 여전히 세션에 managed 상태로 남아 해결되지 않아, clear로
+        // 완전히 detach 시켜야 한다.
+        entityManager.flush();
+        entityManager.clear();
 
         mockMvc.perform(delete("/api/user/account")
                         .header("Authorization", "Bearer " + accessToken))
@@ -927,9 +932,10 @@ class UserControllerTest {
         entityManager.flush();
         entityManager.clear();
 
-        // 소유자가 탈퇴해도 플랜 자체는 삭제/영향 없이 그대로 조회돼야 한다(공유 중이던 협업자 보호 목적).
-        Plan stillExists = planRepository.findById(ownedPlan.getPlanId()).orElseThrow();
-        assertThat(stillExists.getPlanName()).isEqualTo("탈퇴 테스트 플랜");
+        // 소유자가 탈퇴하면 소유했던 플랜도 CASCADE로 함께 물리 삭제된다 — 유예기간이 없어졌으므로
+        // 공유 중이던 협업자가 있어도 그 자리에서 함께 접근권을 잃는다(의도적으로 감수한 트레이드오프,
+        // project_ai/04_기능/마이페이지/C_계정_관리_하드삭제_전환.md 1-2절 참고).
+        assertThat(planRepository.findById(ownedPlan.getPlanId())).isEmpty();
     }
 
     @Test

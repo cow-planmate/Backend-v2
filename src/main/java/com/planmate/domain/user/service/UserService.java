@@ -177,13 +177,24 @@ public class UserService {
         user.changeFcmToken(fcmToken);
     }
 
+    /**
+     * 회원 탈퇴 — 유예기간 없이 즉시 물리 삭제한다(개인정보보호법 제21조 "지체없이" 파기 원칙,
+     * project_ai/04_기능/마이페이지/C_계정_관리_하드삭제_전환.md 참고).
+     * plan/plan_member/collaboration_request/user_preferred_theme 은 ON DELETE CASCADE 로 함께 정리된다.
+     */
     @Transactional
     public void resignAccount(UUID userId) {
         User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+        // DB엔 반영되지 않는다(바로 아래에서 행 자체가 삭제됨) — publish()가 isDeleted()로
+        // 삭제 여부를 판단해 outbox에 닉네임·이미지·아바타를 비워 넣으므로, 메모리상 플래그만 필요하다.
         user.softDelete();
-        // 탈퇴는 지금까지 아무 알림도 내보내지 않아, 커뮤니티가 캐시 TTL(10분)이 지나서야
-        // 탈퇴 사실을 알았다. 복제 테이블에는 TTL이 없으므로 여기서 반드시 기록해야 한다.
-        // publish 는 탈퇴 계정의 닉네임·이미지·아바타를 비워 넣는다.
+        String profileImageUrl = user.getProfileImageUrl();
+
+        userRepository.delete(user);
+
+        // best-effort. publish() 보다 먼저 — advisory lock 임계구역을 MinIO 호출만큼
+        // 늘리지 않기 위해서다(UserOutboxWriter.publish 문서 참고).
+        profileImageStorage.delete(profileImageUrl);
         userOutboxWriter.publish(user);
     }
 }

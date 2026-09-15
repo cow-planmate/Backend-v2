@@ -67,7 +67,7 @@ class OAuthCompleteServiceTest {
     @DisplayName("가입 완료 성공 - 가입캐시 이메일 사용, User 생성 및 토큰 발급, 캐시 삭제")
     void completeRegistration_success() {
         given(oAuthSignupRedisRepository.find(SIGNUP_ID)).willReturn(Optional.of(cacheWithEmail()));
-        given(userRepository.findByProviderAndProviderIdIncludingDeleted("KAKAO", "111")).willReturn(Optional.empty());
+        given(userRepository.existsByProviderAndProviderId(UserProvider.KAKAO, "111")).willReturn(false);
         given(userRepository.existsByEmail("cached@example.com")).willReturn(false);
         given(userRepository.existsByNickname("홍길동")).willReturn(false);
         given(jwtTokenProvider.createAccessToken(any(), org.mockito.ArgumentMatchers.eq("USER"))).willReturn("access-token");
@@ -98,7 +98,7 @@ class OAuthCompleteServiceTest {
     @DisplayName("가입 완료 성공 - 요청의 email이 가입캐시 email보다 우선")
     void completeRegistration_requestEmailOverridesCache() {
         given(oAuthSignupRedisRepository.find(SIGNUP_ID)).willReturn(Optional.of(cacheWithEmail()));
-        given(userRepository.findByProviderAndProviderIdIncludingDeleted("KAKAO", "111")).willReturn(Optional.empty());
+        given(userRepository.existsByProviderAndProviderId(UserProvider.KAKAO, "111")).willReturn(false);
         given(userRepository.existsByEmail("user-provided@example.com")).willReturn(false);
         given(userRepository.existsByNickname("홍길동")).willReturn(false);
         given(jwtTokenProvider.createAccessToken(any(), any())).willReturn("access-token");
@@ -140,8 +140,7 @@ class OAuthCompleteServiceTest {
     @DisplayName("가입 완료 실패 - 이미 가입된 계정(동일 provider+providerId, 레이스 컨디션)")
     void completeRegistration_fail_alreadyRegistered() {
         given(oAuthSignupRedisRepository.find(SIGNUP_ID)).willReturn(Optional.of(cacheWithEmail()));
-        User existing = User.builder().provider(UserProvider.KAKAO).providerId("111").nickname("홍길동").build();
-        given(userRepository.findByProviderAndProviderIdIncludingDeleted("KAKAO", "111")).willReturn(Optional.of(existing));
+        given(userRepository.existsByProviderAndProviderId(UserProvider.KAKAO, "111")).willReturn(true);
 
         assertThatThrownBy(() -> oAuthCompleteService.complete(requestWithoutEmail()))
                 .isInstanceOf(OAuthAlreadyRegisteredException.class);
@@ -153,7 +152,7 @@ class OAuthCompleteServiceTest {
     @DisplayName("가입 완료 실패 - 최종 이메일이 다른 계정에 이미 등록됨(A 콜백 이후 레이스)")
     void completeRegistration_fail_duplicateEmail() {
         given(oAuthSignupRedisRepository.find(SIGNUP_ID)).willReturn(Optional.of(cacheWithEmail()));
-        given(userRepository.findByProviderAndProviderIdIncludingDeleted("KAKAO", "111")).willReturn(Optional.empty());
+        given(userRepository.existsByProviderAndProviderId(UserProvider.KAKAO, "111")).willReturn(false);
         given(userRepository.existsByEmail("cached@example.com")).willReturn(true);
 
         assertThatThrownBy(() -> oAuthCompleteService.complete(requestWithoutEmail()))
@@ -166,7 +165,7 @@ class OAuthCompleteServiceTest {
     @DisplayName("가입 완료 실패 - 닉네임이 다른 계정에 이미 등록됨(A의 resolveUniqueNickname 이후 레이스)")
     void completeRegistration_fail_duplicateNickname() {
         given(oAuthSignupRedisRepository.find(SIGNUP_ID)).willReturn(Optional.of(cacheWithEmail()));
-        given(userRepository.findByProviderAndProviderIdIncludingDeleted("KAKAO", "111")).willReturn(Optional.empty());
+        given(userRepository.existsByProviderAndProviderId(UserProvider.KAKAO, "111")).willReturn(false);
         given(userRepository.existsByEmail("cached@example.com")).willReturn(false);
         given(userRepository.existsByNickname("홍길동")).willReturn(true);
 
