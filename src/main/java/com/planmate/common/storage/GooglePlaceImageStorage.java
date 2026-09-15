@@ -1,6 +1,7 @@
 package com.planmate.common.storage;
 
 import io.minio.BucketExistsArgs;
+import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -68,6 +69,22 @@ public class GooglePlaceImageStorage {
         } catch (Exception e) {
             // 기동은 막지 않는다 — 업로드 시점에 실패로 드러난다.
             log.warn("MinIO 버킷 확인/생성 실패: {}", e.getMessage());
+        }
+    }
+
+    /** 비공개 버킷에서도 서버 자격 증명으로 저장된 사진을 읽는다. */
+    public byte[] read(String placeId) {
+        try (var input = minioClient.getObject(GetObjectArgs.builder()
+                .bucket(bucket).object(buildObjectKey(placeId)).build())) {
+            return input.readAllBytes();
+        } catch (ErrorResponseException e) {
+            if (!"NoSuchKey".equals(e.errorResponse().code()) && !"NotFound".equals(e.errorResponse().code())) {
+                log.warn("MinIO 사진 읽기 실패 (placeId={}): {}", placeId, e.getMessage());
+            }
+            return null;
+        } catch (Exception e) {
+            log.warn("MinIO 사진 읽기 실패 (placeId={}): {}", placeId, e.getMessage());
+            return null;
         }
     }
 

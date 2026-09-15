@@ -19,6 +19,8 @@ public final class SecurityWhitelist {
             "/api/oauth/**",
             "/api/plan/*/complete",
             "/api/destination",
+            "/api/image/place/*",
+            "/image/place/*",
             "/api/place",
             "/api/place/search",
             "/api/place/text-search",

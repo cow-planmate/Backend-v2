@@ -1,5 +1,7 @@
 package com.planmate.domain.place.service;
 
+import static org.mockito.Mockito.verifyNoInteractions;
+
 import com.planmate.common.exception.domain.DestinationNotFoundException;
 import com.planmate.common.exception.domain.GooglePlacesApiCallFailedException;
 import com.planmate.common.exception.domain.PlaceCacheQueryException;
@@ -80,7 +82,7 @@ class PlaceServiceTest {
     void setUp() {
         placeService = new PlaceService(destinationRegionCodeCache, userPreferredThemeRepository,
                 preferredThemeLclsSystmCache, placeCacheRepository, kakaoLocalClient,
-                destinationRepository, googleSearchClient, googlePlaceImageStorage, googlePlaceImageWorker);
+                destinationRepository, googleSearchClient);
     }
 
     private DestinationRegionCode regionCode(String ldongRegnCd, String ldongSignguCd) {
@@ -256,7 +258,6 @@ class PlaceServiceTest {
     void searchByText_noDestinationId_noBias() {
         given(googleSearchClient.searchPlace("경복궁", null, null))
                 .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-1", null)), null));
-        given(googlePlaceImageStorage.findExistingUrl("place-1")).willReturn(null);
 
         PlaceTextSearchResponse response = placeService.searchByText(new PlaceTextSearchRequest("경복궁", null));
 
@@ -278,7 +279,6 @@ class PlaceServiceTest {
         given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.of(busan));
         given(googleSearchClient.searchPlace(eq("해운대"), eq(35.17945), eq(129.07556)))
                 .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-2", null)), "next-token"));
-        given(googlePlaceImageStorage.findExistingUrl("place-2")).willReturn(null);
 
         PlaceTextSearchResponse response = placeService.searchByText(new PlaceTextSearchRequest("해운대", DESTINATION_ID));
 
@@ -297,31 +297,28 @@ class PlaceServiceTest {
     }
 
     @Test
-    @DisplayName("searchByText - MinIO에 이미 사진이 있으면 그 URL을 쓰고 Google 재요청은 안 함")
+    @DisplayName("searchByText - 이미지 API 주소를 반환하고 검색에서 사진을 조회하지 않음")
     void searchByText_usesCachedThumbnail_doesNotRefetch() {
         given(googleSearchClient.searchPlace("스타벅스", null, null))
                 .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-3", "ref-3")), null));
-        given(googlePlaceImageStorage.findExistingUrl("place-3"))
-                .willReturn("http://minio/planmate/googleplace/place-3.webp");
 
         PlaceTextSearchResponse response = placeService.searchByText(new PlaceTextSearchRequest("스타벅스", null));
 
         assertThat(response.places().get(0).thumbnailUrl())
-                .isEqualTo("http://minio/planmate/googleplace/place-3.webp");
-        verify(googlePlaceImageWorker, never()).fetchAndUploadAsync(any(), any());
+                .isEqualTo("/api/image/place/place-3");
+        verifyNoInteractions(googlePlaceImageWorker, googlePlaceImageStorage);
     }
 
     @Test
-    @DisplayName("searchByText - MinIO에 사진이 없으면 thumbnailUrl은 null로 즉시 응답하고 비동기 채움만 트리거")
+    @DisplayName("searchByText - 첫 검색에서도 이미지 API 주소를 반환")
     void searchByText_missingThumbnail_triggersAsyncFillWithoutBlocking() {
         given(googleSearchClient.searchPlace("무명카페", null, null))
                 .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-4", "ref-4")), null));
-        given(googlePlaceImageStorage.findExistingUrl("place-4")).willReturn(null);
 
         PlaceTextSearchResponse response = placeService.searchByText(new PlaceTextSearchRequest("무명카페", null));
 
-        assertThat(response.places().get(0).thumbnailUrl()).isNull();
-        verify(googlePlaceImageWorker, times(1)).fetchAndUploadAsync("place-4", "ref-4");
+        assertThat(response.places().get(0).thumbnailUrl()).isEqualTo("/api/image/place/place-4");
+        verifyNoInteractions(googlePlaceImageWorker, googlePlaceImageStorage);
     }
 
     @Test
@@ -329,7 +326,6 @@ class PlaceServiceTest {
     void searchByText_responseHasNoRatingLikeFields() {
         given(googleSearchClient.searchPlace("아무데나", null, null))
                 .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-5", null)), null));
-        given(googlePlaceImageStorage.findExistingUrl("place-5")).willReturn(null);
 
         PlaceTextSearchResponse response = placeService.searchByText(new PlaceTextSearchRequest("아무데나", null));
 
@@ -353,7 +349,6 @@ class PlaceServiceTest {
     void searchByTextNextPage_passesTokenThrough() {
         given(googleSearchClient.searchNextPage("token-abc"))
                 .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-6", null)), "token-def"));
-        given(googlePlaceImageStorage.findExistingUrl("place-6")).willReturn(null);
 
         PlaceTextSearchResponse response = placeService.searchByTextNextPage(
                 new PlaceTextSearchNextRequest("검색어", "token-abc"));
