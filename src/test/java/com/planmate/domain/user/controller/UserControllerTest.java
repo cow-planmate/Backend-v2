@@ -693,14 +693,14 @@ class UserControllerTest {
         mockMvc.perform(patch("/api/user/gender")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeGenderRequest(Gender.OTHER))))
+                        .content(objectMapper.writeValueAsString(new ChangeGenderRequest(Gender.FEMALE))))
                 .andExpect(status().isNoContent());
 
-        assertThat(userRepository.findById(testUser.getUserId()).orElseThrow().getGender()).isEqualTo(Gender.OTHER);
+        assertThat(userRepository.findById(testUser.getUserId()).orElseThrow().getGender()).isEqualTo(Gender.FEMALE);
     }
 
     @Test
-    @DisplayName("성별 변경 성공 - MALE도 DB에 실제로 반영됨(enum Converter 왕복 확인 — FEMALE/OTHER만 있고 MALE은 빠져있던 것 보강)")
+    @DisplayName("성별 변경 성공 - MALE도 DB에 실제로 반영됨(enum Converter 왕복 확인)")
     void changeGender_success_male() throws Exception {
         mockMvc.perform(patch("/api/user/gender")
                         .header("Authorization", "Bearer " + accessToken)
@@ -718,6 +718,17 @@ class UserControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"gender\":\"INVALID\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+    }
+
+    @Test
+    @DisplayName("성별 변경 검증 실패 - OTHER는 더 이상 지원하지 않아 400, COMMON_001")
+    void changeGender_validationFailure_otherRemoved() throws Exception {
+        mockMvc.perform(patch("/api/user/gender")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"gender\":\"OTHER\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
     }
