@@ -41,8 +41,8 @@ public class OAuthCompleteService {
             throw new OAuthEmailRequiredException();
         }
 
-        // 중복가입 방지 — 탈퇴 계정 포함 조회 재사용(A_진입.md 11-1절과 동일한 이유, 레이스 컨디션 방어)
-        if (userRepository.findByProviderAndProviderIdIncludingDeleted(cache.provider().name(), cache.providerId()).isPresent()) {
+        // 중복가입 방지 — 활성 계정만 확인(A_진입.md 11-1절과 동일한 이유, 레이스 컨디션 방어)
+        if (userRepository.existsByProviderAndProviderId(cache.provider(), cache.providerId())) {
             throw new OAuthAlreadyRegisteredException();
         }
 

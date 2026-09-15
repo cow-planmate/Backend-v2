@@ -8,7 +8,6 @@ import com.planmate.domain.oauth.repository.OAuthLoginCodeRedisRepository;
 import com.planmate.domain.oauth.repository.OAuthSignupRedisRepository;
 import com.planmate.domain.oauth.service.provider.OAuthProfileFetcher;
 import com.planmate.domain.user.entity.User;
-import com.planmate.domain.user.internal.outbox.UserOutboxWriter;
 import com.planmate.domain.user.repository.UserRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +29,6 @@ public class OAuthLoginService {
     private final UserRepository userRepository;
     private final OAuthLoginCodeRedisRepository oAuthLoginCodeRedisRepository;
     private final OAuthSignupRedisRepository oAuthSignupRedisRepository;
-    private final UserOutboxWriter userOutboxWriter;
     private final OAuthNicknamePolicy nicknamePolicy;
     private final List<OAuthProfileFetcher> profileFetchers;
 
@@ -75,34 +73,17 @@ public class OAuthLoginService {
 
         OAuthUserProfile profile = fetchersByProvider.get(provider).fetch(code, state);
 
-        String providerName = provider.name();
         String email = profile.getEmail();
         boolean needEmail = (email == null || email.isBlank());
         String providerId = profile.getProviderId();
 
-        // 탈퇴 계정 포함 조회(OAuth 재가입 정책, 데이터베이스_설계_v2.md 6.8절)
-        Optional<User> existingUser =
-                userRepository.findByProviderAndProviderIdIncludingDeleted(providerName, providerId);
+        // 활성 계정만 조회 — 탈퇴 계정은 로컬과 동일하게 "없음" 취급되어 아래 신규가입 분기로 흐른다
+        // (재가입 정책 변경: 자동 복구 대신 새 계정 생성, uk_users_provider_provider_id가
+        //  V14부터 WHERE deleted_at IS NULL 조건을 가져 탈퇴 후 동일 provider+providerId 재사용 가능)
+        Optional<User> existingUser = userRepository.findByProviderAndProviderId(provider.toUserProvider(), providerId);
 
         if (existingUser.isPresent()) {
-            User user = existingUser.get();
-
-            if (user.isDeleted()) {
-                // 닉네임 재확인(11-3절)을 restore()보다 먼저 계산한다 — restore()를 먼저 호출하면
-                // resolveUniqueNickname 내부의 existsByNickname 쿼리 실행 직전 Hibernate가 restore()로 생긴
-                // 변경사항(deletedAt=null)만 먼저 auto-flush해버려서, 닉네임이 아직 안 바뀐 채로 활성화된
-                // 순간적인 DB 상태가 생기고 그 시점에 uk_users_nickname이 위반된다(실제 DB 통합 테스트로 재현 확인).
-                // 닉네임을 먼저 확정한 뒤 restore()+changeNickname()을 연달아 호출해 하나의 UPDATE로 flush되게 한다.
-                String reconfirmedNickname = nicknamePolicy.resolveUnique(user.getNickname());
-                user.restore();
-                user.changeNickname(reconfirmedNickname);
-                // 재활성화는 지금까지 아무 알림도 내보내지 않았다 — 탈퇴 상태로 복제돼 있던
-                // 사용자가 살아나고 닉네임까지 바뀌는데 커뮤니티는 모른다. 페이로드가 전체
-                // 스냅샷이라 restore + changeNickname 을 한 행으로 덮으면 된다.
-                userOutboxWriter.publish(user);
-            }
-
-            String loginCode = oAuthLoginCodeRedisRepository.issue(user.getUserId());
+            String loginCode = oAuthLoginCodeRedisRepository.issue(existingUser.get().getUserId());
             return buildLoginCodeRedirect(loginCode);
         }
 
