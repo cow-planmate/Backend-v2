@@ -219,9 +219,9 @@ class UserServiceTest {
         User user = mock(User.class);
         given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
 
-        userService.changeGender(USER_ID, Gender.OTHER);
+        userService.changeGender(USER_ID, Gender.FEMALE);
 
-        verify(user).changeGender(Gender.OTHER);
+        verify(user).changeGender(Gender.FEMALE);
     }
 
     @Test
