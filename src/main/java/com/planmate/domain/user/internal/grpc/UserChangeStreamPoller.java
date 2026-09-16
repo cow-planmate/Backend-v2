@@ -163,23 +163,25 @@ public class UserChangeStreamPoller {
                 .build();
     }
 
-    /** 스냅샷 항목. outbox 를 거치지 않으므로 여기서 탈퇴 마스킹과 아바타 해시를 직접 맞춘다. */
+    /**
+     * 스냅샷 항목. outbox 를 거치지 않으므로 여기서 아바타 해시를 직접 맞춘다.
+     *
+     * <p>탈퇴 마스킹 분기는 없다 — 회원 탈퇴가 소프트 삭제가 아니라 즉시 물리 삭제이므로
+     * (project_ai/04_기능/마이페이지/C_계정_관리_하드삭제_전환.md 1-6절), 이 메서드가 읽는
+     * {@code findSnapshotPageIncludingDeleted} 결과에는 애초에 탈퇴 계정이 나오지 않는다.
+     */
     private WatchUserChangesResponse toMessage(User user, long snapshotSeq) {
-        boolean deleted = user.isDeleted();
-
         InternalUser.Builder proto = InternalUser.newBuilder()
                 .setUserId(user.getUserId().toString())
                 .setProfilePublic(user.isProfilePublic())
-                .setDeleted(deleted);
-        if (!deleted) {
-            proto.setNickname(user.getNickname());
-            if (user.getProfileImageUrl() != null) {
-                proto.setProfileImageUrl(user.getProfileImageUrl());
-            }
-            String avatarHash = GravatarHash.of(user.getEmail());
-            if (avatarHash != null) {
-                proto.setAvatarHash(avatarHash);
-            }
+                .setDeleted(false)
+                .setNickname(user.getNickname());
+        if (user.getProfileImageUrl() != null) {
+            proto.setProfileImageUrl(user.getProfileImageUrl());
+        }
+        String avatarHash = GravatarHash.of(user.getEmail());
+        if (avatarHash != null) {
+            proto.setAvatarHash(avatarHash);
         }
 
         // 스냅샷 항목은 모두 같은 기준 시퀀스를 달고 나간다. 소비자의 업서트 가드가

@@ -262,32 +262,23 @@ class OAuthControllerTest {
     }
 
     @Test
-    @DisplayName("콜백 성공 - 탈퇴했던 SNS 계정 복구 + 닉네임이 실제 DB의 다른 활성 계정에 선점된 경우 재확인")
-    void callback_deletedUser_restoresAndReconfirmsNicknameAgainstRealDb() throws Exception {
-        String sharedNickname = "복구닉" + UUID.randomUUID().toString().substring(0, 6);
+    @DisplayName("콜백 성공 - 탈퇴했던 SNS 계정으로 재로그인 → 활성 계정 조회에서 안 잡혀 신규가입과 동일하게 NEED_ADDITIONAL_INFO")
+    void callback_deletedUser_treatedAsNewSignupAgainstRealDb() throws Exception {
+        String oldNickname = "탈퇴닉" + UUID.randomUUID().toString().substring(0, 6);
+        String providerId = randomNumericProviderId();
 
         User deletedUser = userRepository.save(User.builder()
                 .provider(UserProvider.KAKAO)
-                .providerId(randomNumericProviderId())
-                .email("restore-it-" + UUID.randomUUID() + "@example.com")
-                .nickname(sharedNickname)
+                .providerId(providerId)
+                .email("rejoin-it-" + UUID.randomUUID() + "@example.com")
+                .nickname(oldNickname)
                 .role(UserRole.USER)
                 .build());
         deletedUser.softDelete();
-        // saveAndFlush로 즉시 flush — Hibernate는 같은 flush 안에서 INSERT를 UPDATE보다 먼저 실행하므로,
-        // 여기서 flush를 안 하면 아래 "닉네임 선점" INSERT가 이 UPDATE보다 먼저 나가서
-        // 아직 활성 상태인 원래 행과 uk_users_nickname이 충돌한다.
         userRepository.saveAndFlush(deletedUser);
 
-        // 탈퇴해 있는 동안 다른 사람이 같은 닉네임을 실제로 선점한 상황(uk_users_nickname은 WHERE deleted_at IS NULL이라 가능)
-        userRepository.save(User.builder()
-                .provider(UserProvider.LOCAL)
-                .email("nickname-holder-" + UUID.randomUUID() + "@example.com")
-                .nickname(sharedNickname)
-                .role(UserRole.USER)
-                .build());
-
-        stubKakaoProfile(deletedUser.getProviderId(), deletedUser.getEmail(), sharedNickname);
+        // 탈퇴 계정과 완전히 동일한 provider+providerId로 다시 로그인
+        stubKakaoProfile(providerId, "rejoin-new-" + UUID.randomUUID() + "@example.com", oldNickname);
         jakarta.servlet.http.Cookie stateCookie = startAndGetStateCookie("kakao");
 
         MvcResult result = mockMvc.perform(get("/api/oauth/kakao/callback")
@@ -298,13 +289,15 @@ class OAuthControllerTest {
                 .andReturn();
 
         Map<String, String> params = parseQueryParams(result.getResponse().getHeader("Location"));
-        assertThat(params.get("status")).isEqualTo("SUCCESS");
+        // 탈퇴 계정은 복구되지 않고 신규가입 분기로 흘러 추가정보 입력을 요구한다
+        assertThat(params.get("status")).isEqualTo("NEED_ADDITIONAL_INFO");
+        assertThat(params.get("signupId")).isNotBlank();
 
-        // 실제 DB에서 findById로 조회(=@SQLRestriction 적용)해서 진짜로 복구됐는지 확인
-        User restoredUser = userRepository.findById(deletedUser.getUserId()).orElseThrow();
-        assertThat(restoredUser.getDeletedAt()).isNull();
-        // 닉네임 선점 상황이 실제 DB 유니크 제약과 함께 재확인돼 접미사가 붙었는지 확인
-        assertThat(restoredUser.getNickname()).isEqualTo(sharedNickname + "1");
+        // 탈퇴한 원래 행은 그대로 탈퇴 상태로 남아있다(복구되지 않음)
+        // 같은 트랜잭션 안이라 findById가 1차 캐시의 관리 중인 인스턴스를 그대로 돌려주므로(SQLRestriction 우회),
+        // "조회가 안 됨"이 아니라 "deletedAt이 여전히 채워져 있음"으로 복구 여부를 확인한다.
+        assertThat(userRepository.findById(deletedUser.getUserId()))
+                .hasValueSatisfying(user -> assertThat(user.getDeletedAt()).isNotNull());
     }
 
     @Test
@@ -576,5 +569,42 @@ class OAuthControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("OAUTH_004"));
+    }
+
+    @Test
+    @DisplayName("가입 완료 성공 - 탈퇴한 계정과 동일한 provider+providerId로 새 계정 INSERT, 실제 uk_users_provider_provider_id(V14) 위반 없음")
+    void complete_success_reusesDeletedAccountProviderIdAgainstRealDb() throws Exception {
+        String providerId = "kakao-" + UUID.randomUUID();
+
+        User deletedUser = userRepository.save(User.builder()
+                .provider(UserProvider.KAKAO)
+                .providerId(providerId)
+                .email("old-owner-" + UUID.randomUUID() + "@example.com")
+                .nickname("old" + UUID.randomUUID().toString().substring(0, 6))
+                .role(UserRole.USER)
+                .build());
+        deletedUser.softDelete();
+        userRepository.saveAndFlush(deletedUser);
+
+        OAuthSignupCache cache = new OAuthSignupCache(
+                UserProvider.KAKAO, providerId,
+                "new-owner-" + UUID.randomUUID() + "@example.com", "new" + UUID.randomUUID().toString().substring(0, 6));
+        String signupId = oAuthSignupRedisRepository.save(cache);
+
+        OAuthCompleteRequest request = new OAuthCompleteRequest(signupId, null, LocalDate.of(2001, 5, 20), Gender.MALE);
+
+        String responseBody = mockMvc.perform(post("/api/oauth/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        UUID newUserId = UUID.fromString(objectMapper.readTree(responseBody).get("userId").asText());
+        assertThat(newUserId).isNotEqualTo(deletedUser.getUserId());
+
+        User newUser = userRepository.findById(newUserId).orElseThrow();
+        assertThat(newUser.getProviderId()).isEqualTo(providerId);
+        assertThat(newUser.getDeletedAt()).isNull();
+        assertThat(newUser.getEmail()).isEqualTo(cache.email());
     }
 }

@@ -93,6 +93,16 @@ tourdata:
     password: ${TOURDATA_DATASOURCE_PASSWORD:1234}
     driver-class-name: org.postgresql.Driver
 
+# planmate-ai (AI 챗봇 서버) — project_ai/04_기능/ai/06_챗봇_연동_설계.md §8.
+# internal-token 은 planmate-ai .env 의 INTERNAL_SHARED_SECRET 과 같은 값이어야 한다.
+# read-ms 40초 = Gemini 지연(2~20초) + planmate-ai 내부 데드라인(30초) 여유.
+ai:
+  base-url: ${AI_BASE_URL:http://localhost:8010}
+  internal-token: ${AI_INTERNAL_TOKEN:dev-secret}
+  timeout:
+    connect-ms: ${AI_CONNECT_TIMEOUT_MS:5000}
+    read-ms: ${AI_READ_TIMEOUT_MS:40000}
+
 notification:
   legacy-delivery:
     # Notification 서비스 컷오버 뒤에는 false. true인 동안은 Backend-v2가 협업 알림을

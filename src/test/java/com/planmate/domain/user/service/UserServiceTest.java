@@ -2,6 +2,7 @@ package com.planmate.domain.user.service;
 
 import com.planmate.common.exception.domain.DuplicateNicknameException;
 import com.planmate.common.exception.domain.UserNotFoundException;
+import com.planmate.common.storage.ProfileImageStorage;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
@@ -48,6 +49,8 @@ class UserServiceTest {
     private UserPreferredThemeRepository userPreferredThemeRepository;
     @Mock
     private PlanMemberRepository planMemberRepository;
+    @Mock
+    private ProfileImageStorage profileImageStorage;
     @Mock
     private UserOutboxWriter userOutboxWriter;
 
@@ -219,9 +222,9 @@ class UserServiceTest {
         User user = mock(User.class);
         given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
 
-        userService.changeGender(USER_ID, Gender.OTHER);
+        userService.changeGender(USER_ID, Gender.FEMALE);
 
-        verify(user).changeGender(Gender.OTHER);
+        verify(user).changeGender(Gender.FEMALE);
     }
 
     @Test
@@ -254,18 +257,20 @@ class UserServiceTest {
     }
 
     @Test
-    @DisplayName("resignAccount 성공 - 하드 삭제가 아니라 softDelete 호출")
+    @DisplayName("resignAccount 성공 - 즉시 하드 삭제(softDelete는 outbox 발행용 메모리 플래그로만 호출) + 프로필 이미지 정리")
     void resignAccount_success() {
         User user = mock(User.class);
+        given(user.getProfileImageUrl()).willReturn("https://example.com/profile.png");
         given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
 
         userService.resignAccount(USER_ID);
 
         verify(user).softDelete();
-        verify(userRepository, never()).deleteById(any());
-        verify(userRepository, never()).delete(any());
-        // 탈퇴는 오랫동안 아무 알림도 내보내지 않아, 커뮤니티가 캐시 만료 전까지 탈퇴를 몰랐다.
-        // 복제본에는 만료가 없으므로 이 기록이 빠지면 탈퇴자가 영구히 살아 있는 것처럼 보인다.
+        verify(userRepository).delete(user);
+        verify(profileImageStorage).delete("https://example.com/profile.png");
+        // 개인정보보호법 제21조 "지체없이" 파기 원칙(project_ai/04_기능/마이페이지/C_계정_관리_하드삭제_전환.md) —
+        // 유예기간 없이 즉시 물리 삭제한다. plan/plan_member/collaboration_request/user_preferred_theme 은
+        // ON DELETE CASCADE 로 함께 정리되므로 Service가 별도로 정리하지 않는다.
         verify(userOutboxWriter).publish(user);
     }
 

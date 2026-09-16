@@ -23,13 +23,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     // @SQLRestriction 자동 적용 → 탈퇴 계정 미포함
     Optional<User> findByProviderAndProviderId(UserProvider provider, String providerId);
 
-    // OAuth 재가입 — 탈퇴 계정 포함 조회 (DB 설계 6.8절 복구 플로우)
-    // nativeQuery = true → @SQLRestriction 미적용
-    // 활용 인덱스: uk_users_provider_provider_id (deleted_at IS NULL 조건 없음)
-    @Query(value = "SELECT * FROM users WHERE provider = :provider AND provider_id = :providerId",
-           nativeQuery = true)
-    Optional<User> findByProviderAndProviderIdIncludingDeleted(@Param("provider") String provider,
-                                                               @Param("providerId") String providerId);
+    // OAuth 가입 완료 시 레이스 컨디션 방어용 중복 확인 — 활성 계정만 (04_기능/OAuth/A_진입.md 11-1절과 동일 이유)
+    // 활용 인덱스: uk_users_provider_provider_id ON (provider, provider_id) WHERE deleted_at IS NULL
+    // (V14 이전엔 deleted_at 조건이 없어 탈퇴 계정도 이 조합을 영구 점유했으나,
+    //  이제 탈퇴 후에는 동일 provider+providerId로 재가입 시 새 계정이 생성된다 — 로컬과 동일 정책)
+    boolean existsByProviderAndProviderId(UserProvider provider, String providerId);
 
     // 닉네임 중복 확인
     // 활용 인덱스: uk_users_nickname ON (nickname) WHERE deleted_at IS NULL
