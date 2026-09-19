@@ -19,8 +19,6 @@ public final class SecurityWhitelist {
             "/api/oauth/**",
             "/api/plan/*/complete",
             "/api/destination",
-            "/api/image/place/*",
-            "/image/place/*",
             "/api/place",
             "/api/place/*", // 장소 상세 GET /api/place/{contentId} — 개인화 없음(05_장소상세_API_설계.md §12)
             "/api/weather",

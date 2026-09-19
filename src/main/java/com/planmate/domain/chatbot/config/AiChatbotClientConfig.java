@@ -13,7 +13,7 @@ import java.time.Duration;
 /**
  * planmate-ai 챗봇 서버 전용 {@link RestClient}.
  *
- * <p>기존 {@code googlePlacesRestTemplate}(3s/5s)을 재사용하지 않는다 — 챗봇 왕복은 Gemini 호출이라
+ * <p>공용 {@code restTemplate} 을 재사용하지 않는다 — 챗봇 왕복은 Gemini 호출이라
  * 2~20초, planmate-ai 내부 데드라인이 30초라서 read timeout 을 40초로 넉넉히 잡는다.
  *
  * <p>{@link JdkClientHttpRequestFactory} 를 쓰는 이유: connect timeout 과 read timeout 이

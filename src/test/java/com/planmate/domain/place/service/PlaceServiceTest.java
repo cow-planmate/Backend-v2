@@ -3,10 +3,7 @@ package com.planmate.domain.place.service;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.planmate.common.exception.domain.DestinationNotFoundException;
-import com.planmate.common.exception.domain.GooglePlacesApiCallFailedException;
 import com.planmate.common.exception.domain.PlaceCacheQueryException;
-import com.planmate.common.externalAPI.GooglePlaceImageWorker;
-import com.planmate.common.storage.GooglePlaceImageStorage;
 import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
 import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
@@ -60,10 +57,6 @@ class PlaceServiceTest {
     private PlaceCacheRepository placeCacheRepository;
     @Mock
     private DestinationRepository destinationRepository;
-    @Mock
-    private GooglePlaceImageStorage googlePlaceImageStorage;
-    @Mock
-    private GooglePlaceImageWorker googlePlaceImageWorker;
 
     private PlaceService placeService;
 

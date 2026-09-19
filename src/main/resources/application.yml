@@ -146,8 +146,6 @@ grpc:
 api:
   odsay:
     key: ${ODSAY_API_KEY:}
-  google:
-    key: ${GOOGLE_PLACES_API_KEY:}
 
 firebase:
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}

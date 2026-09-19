@@ -67,7 +67,6 @@ public enum ErrorCode {
 
     // 추천 장소
     // 키가 없으면 카카오가 401을 주는데, 그대로 두면 "검색이 안 된다"로만 보여 원인을 못 찾는다
-    GOOGLE_PLACES_CALL_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "PLACE_004", "외부 장소 검색에 실패했습니다."),
     // 추천장소(②)·장소상세(③) 공용 — tourdata 캐시 DB 조회 실패. 05_장소상세_API_설계.md §15-1로 문구 일반화.
     PLACE_RECOMMENDATION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "PLACE_005", "장소 정보 조회에 일시적으로 실패했습니다."),
     PLACE_DETAIL_NOT_FOUND(HttpStatus.NOT_FOUND, "PLACE_006", "장소 상세 정보를 찾을 수 없습니다."),
