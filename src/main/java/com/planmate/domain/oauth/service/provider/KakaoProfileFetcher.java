@@ -63,7 +63,8 @@ public class KakaoProfileFetcher implements OAuthProfileFetcher {
         return new OAuthUserProfile(
                 String.valueOf(d.getId()),
                 d.getKakaoAccount().getEmail(),
-                d.getKakaoAccount().getProfile().getNickname()
+                d.getKakaoAccount().getProfile().getNickname(),
+                null   // 이번 범위에서 저장하지 않음(04_기능/OAuth/C_SNS_연동해제.md 0-3절)
         );
     }
 }

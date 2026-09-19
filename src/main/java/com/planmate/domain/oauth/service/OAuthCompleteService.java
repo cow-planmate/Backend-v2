@@ -63,6 +63,9 @@ public class OAuthCompleteService {
                 .birthdate(request.birthdate())
                 .gender(request.gender())
                 .role(UserRole.USER)
+                // 이미 암호화된 값을 그대로 옮겨 담을 뿐, 여기서 복호화·재암호화하지 않는다
+                // (04_기능/OAuth/C_SNS_연동해제.md 2-2절)
+                .snsRefreshToken(cache.refreshToken())
                 .build();
 
         userRepository.save(user);

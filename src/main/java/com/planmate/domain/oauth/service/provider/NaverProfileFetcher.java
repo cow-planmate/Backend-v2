@@ -64,7 +64,8 @@ public class NaverProfileFetcher implements OAuthProfileFetcher {
         return new OAuthUserProfile(
                 r.getId(),
                 r.getEmail(),
-                r.getNickname()
+                r.getNickname(),
+                null   // 이번 범위에서 저장하지 않음(04_기능/OAuth/C_SNS_연동해제.md 0-3절)
         );
     }
 }

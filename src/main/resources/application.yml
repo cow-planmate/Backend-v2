@@ -197,6 +197,11 @@ jwt:
   access-token-expiry-seconds: ${JWT_ACCESS_EXPIRY:900}
   refresh-token-expiry-seconds: ${JWT_REFRESH_EXPIRY:604800}
 
+security:
+  # SNS(OAuth) refresh_token 암호화 키 — Base64로 인코딩된 32바이트(AES-256). 필수다.
+  # 없으면 SnsRefreshTokenCipher 가 기동을 막는다. 생성: openssl rand -base64 32
+  sns-refresh-token-key: ${SNS_REFRESH_TOKEN_ENC_KEY:}
+
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174}
 
