@@ -2,6 +2,7 @@ package com.planmate.domain.place.dto;
 
 import com.planmate.domain.place.enums.PlaceCategory;
 import com.planmate.domain.place.repository.PlaceCacheRepository.PlaceRow;
+import com.planmate.domain.place.support.NaverMapLinkFactory;
 import lombok.Builder;
 
 @Builder
@@ -14,7 +15,8 @@ public record PlaceSummaryDto(
         String thumbnailUrl,
         String copyrightDivCd,
         Double latitude,
-        Double longitude
+        Double longitude,
+        String naverMapUrl
 ) {
     // 응답엔 포함하되 프론트 UI엔 값을 화면 표시만 안 함 — 지도 렌더링, 장소를 일정에 저장할 때 좌표로 사용.
     // addr2/ldongRegnCd 제외 이유: addr2는 채움률 15%대에 형식도 제각각(법정동/층수/호실 등 뒤섞임, 2026-07-21 실측),
@@ -33,6 +35,7 @@ public record PlaceSummaryDto(
                 .copyrightDivCd(row.cpyrhtDivCd())
                 .latitude(row.mapy())
                 .longitude(row.mapx())
+                .naverMapUrl(NaverMapLinkFactory.buildSearchUrl(row.title(), row.addr1()))
                 .build();
     }
 }
