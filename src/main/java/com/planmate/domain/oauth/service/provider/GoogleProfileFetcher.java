@@ -63,7 +63,8 @@ public class GoogleProfileFetcher implements OAuthProfileFetcher {
         return new OAuthUserProfile(
                 d.getSub(),
                 d.getEmail(),
-                d.getName()
+                d.getName(),
+                token.getRefreshToken()
         );
     }
 }

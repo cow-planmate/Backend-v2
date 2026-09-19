@@ -76,4 +76,27 @@ class GoogleProfileFetcherTest {
         assertThat(result.getEmail()).isEqualTo("user@gmail.com");
         assertThat(result.getNickname()).isEqualTo("구글유저");
     }
+
+    @Test
+    @DisplayName("fetch() - 토큰 교환 응답의 refresh_token을 버리지 않고 OAuthUserProfile에 담는다 (C_SNS_연동해제.md 0-2절)")
+    void fetch_propagatesRefreshToken() {
+        given(oAuthProperties.getProvider(OAuthProvider.GOOGLE)).willReturn(googleProviderConfig());
+
+        GoogleTokenResponse tokenResponse = new GoogleTokenResponse();
+        ReflectionTestUtils.setField(tokenResponse, "accessToken", "google-access-token");
+        ReflectionTestUtils.setField(tokenResponse, "refreshToken", "google-refresh-token");
+        given(restTemplate.postForObject(eq(GOOGLE_TOKEN_URI), any(HttpEntity.class), eq(GoogleTokenResponse.class)))
+                .willReturn(tokenResponse);
+
+        GoogleUserResponse userResponse = new GoogleUserResponse();
+        ReflectionTestUtils.setField(userResponse, "sub", "google-sub-111");
+        ReflectionTestUtils.setField(userResponse, "email", "user@gmail.com");
+        ReflectionTestUtils.setField(userResponse, "name", "구글유저");
+        given(restTemplate.exchange(eq(GOOGLE_USER_INFO_URI), eq(HttpMethod.GET), any(HttpEntity.class), eq(GoogleUserResponse.class)))
+                .willReturn(ResponseEntity.ok(userResponse));
+
+        OAuthUserProfile result = googleProfileFetcher.fetch("auth-code", null);
+
+        assertThat(result.getRefreshToken()).isEqualTo("google-refresh-token");
+    }
 }

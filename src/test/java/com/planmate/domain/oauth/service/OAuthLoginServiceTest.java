@@ -10,6 +10,7 @@ import com.planmate.domain.oauth.service.provider.OAuthProfileFetcher;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.repository.UserRepository;
+import com.planmate.security.SnsRefreshTokenCipher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -55,6 +56,8 @@ class OAuthLoginServiceTest {
     private OAuthProfileFetcher googleFetcher;
     @Mock
     private OAuthProfileFetcher naverFetcher;
+    @Mock
+    private SnsRefreshTokenCipher snsRefreshTokenCipher;
 
     private OAuthLoginService oAuthLoginService;
 
@@ -67,7 +70,7 @@ class OAuthLoginServiceTest {
         OAuthNicknamePolicy nicknamePolicy = new OAuthNicknamePolicy(userRepository);
         oAuthLoginService = new OAuthLoginService(oAuthProperties, userRepository, oAuthLoginCodeRedisRepository,
                 oAuthSignupRedisRepository, nicknamePolicy,
-                List.of(kakaoFetcher, googleFetcher, naverFetcher));
+                List.of(kakaoFetcher, googleFetcher, naverFetcher), snsRefreshTokenCipher);
         oAuthLoginService.init();
     }
 
@@ -107,7 +110,7 @@ class OAuthLoginServiceTest {
     @Test
     @DisplayName("콜백 성공 - 이미 SNS로 가입된 활성 유저 → 1회용 로그인 코드 발급 후 SUCCESS 리다이렉트")
     void handleCallback_existingActiveUser_issuesLoginCode() {
-        given(kakaoFetcher.fetch(eq("auth-code"), any())).willReturn(new OAuthUserProfile("111", "user@example.com", "홍길동"));
+        given(kakaoFetcher.fetch(eq("auth-code"), any())).willReturn(new OAuthUserProfile("111", "user@example.com", "홍길동", null));
         given(oAuthProperties.getFrontendRedirectUri()).willReturn(FRONTEND_REDIRECT_URI);
 
         User existingUser = buildUser(UserProvider.KAKAO, "111", "홍길동");
@@ -126,7 +129,7 @@ class OAuthLoginServiceTest {
     @Test
     @DisplayName("콜백 성공 - 탈퇴했던 SNS 계정으로 재로그인 → 활성 계정 조회에 안 잡혀 신규가입과 동일하게 가입캐시 저장")
     void handleCallback_deletedUser_treatedAsNewSignup() {
-        given(kakaoFetcher.fetch(eq("auth-code"), any())).willReturn(new OAuthUserProfile("222", "user2@example.com", "라이언"));
+        given(kakaoFetcher.fetch(eq("auth-code"), any())).willReturn(new OAuthUserProfile("222", "user2@example.com", "라이언", null));
         given(oAuthProperties.getFrontendRedirectUri()).willReturn(FRONTEND_REDIRECT_URI);
 
         // 탈퇴 계정은 @SQLRestriction이 적용된 findByProviderAndProviderId 조회에서 애초에 안 잡힌다
@@ -149,7 +152,7 @@ class OAuthLoginServiceTest {
     @Test
     @DisplayName("콜백 정상 분기 - SNS 이메일이 이미 다른 provider 계정에 사용 중 → EMAIL_CONFLICT 리다이렉트, 가입캐시 저장 안 함")
     void handleCallback_emailConflict_redirectsFail() {
-        given(kakaoFetcher.fetch(eq("auth-code"), any())).willReturn(new OAuthUserProfile("333", "conflict@example.com", "닉네임"));
+        given(kakaoFetcher.fetch(eq("auth-code"), any())).willReturn(new OAuthUserProfile("333", "conflict@example.com", "닉네임", null));
         given(oAuthProperties.getFrontendRedirectUri()).willReturn(FRONTEND_REDIRECT_URI);
 
         given(userRepository.findByProviderAndProviderId(UserProvider.KAKAO, "333"))
@@ -167,7 +170,7 @@ class OAuthLoginServiceTest {
     @Test
     @DisplayName("콜백 성공 - 신규 SNS 유저 → 닉네임 정제/중복회피 후 가입캐시 저장, NEED_ADDITIONAL_INFO 리다이렉트")
     void handleCallback_newUser_savesSignupCache() {
-        given(kakaoFetcher.fetch(eq("auth-code"), any())).willReturn(new OAuthUserProfile("444", "newbie@example.com", " 홍 길동!! "));
+        given(kakaoFetcher.fetch(eq("auth-code"), any())).willReturn(new OAuthUserProfile("444", "newbie@example.com", " 홍 길동!! ", null));
         given(oAuthProperties.getFrontendRedirectUri()).willReturn(FRONTEND_REDIRECT_URI);
 
         given(userRepository.findByProviderAndProviderId(UserProvider.KAKAO, "444"))
@@ -195,7 +198,8 @@ class OAuthLoginServiceTest {
     @Test
     @DisplayName("콜백 성공 - GOOGLE 기존 가입 유저 → fetchersByProvider가 GOOGLE을 GoogleProfileFetcher로 매핑 + SUCCESS 리다이렉트")
     void handleCallback_google_existingUser_issuesLoginCode() {
-        given(googleFetcher.fetch(eq("auth-code"), any())).willReturn(new OAuthUserProfile("google-sub-111", "user@gmail.com", "구글유저"));
+        given(googleFetcher.fetch(eq("auth-code"), any()))
+                .willReturn(new OAuthUserProfile("google-sub-111", "user@gmail.com", "구글유저", null));
         given(oAuthProperties.getFrontendRedirectUri()).willReturn(FRONTEND_REDIRECT_URI);
 
         User existingUser = buildUser(UserProvider.GOOGLE, "google-sub-111", "구글유저");
@@ -209,9 +213,46 @@ class OAuthLoginServiceTest {
     }
 
     @Test
+    @DisplayName("콜백 성공 - GOOGLE 기존 유저 재로그인 시 refresh_token을 받으면 즉시 암호화해서 저장 (C_SNS_연동해제.md 2-1절)")
+    void handleCallback_google_existingUser_encryptsAndStoresRefreshToken() {
+        given(googleFetcher.fetch(eq("auth-code"), any()))
+                .willReturn(new OAuthUserProfile("google-sub-111", "user@gmail.com", "구글유저", "raw-refresh-token"));
+        given(oAuthProperties.getFrontendRedirectUri()).willReturn(FRONTEND_REDIRECT_URI);
+        given(snsRefreshTokenCipher.encrypt("raw-refresh-token")).willReturn("encrypted-refresh-token");
+
+        User existingUser = buildUser(UserProvider.GOOGLE, "google-sub-111", "구글유저");
+        given(userRepository.findByProviderAndProviderId(UserProvider.GOOGLE, "google-sub-111"))
+                .willReturn(Optional.of(existingUser));
+        given(oAuthLoginCodeRedisRepository.issue(existingUser.getUserId())).willReturn("login-code-google");
+
+        oAuthLoginService.callback(OAuthProvider.GOOGLE, "auth-code", null);
+
+        assertThat(existingUser.getSnsRefreshToken()).isEqualTo("encrypted-refresh-token");
+    }
+
+    @Test
+    @DisplayName("콜백 성공 - refresh_token이 안 내려오면 기존 저장값을 덮어쓰지 않고 그대로 둔다 (2-1절 4번)")
+    void handleCallback_existingUser_noRefreshToken_doesNotOverwritePreviousValue() {
+        given(kakaoFetcher.fetch(eq("auth-code"), any()))
+                .willReturn(new OAuthUserProfile("111", "user@example.com", "홍길동", null));
+        given(oAuthProperties.getFrontendRedirectUri()).willReturn(FRONTEND_REDIRECT_URI);
+
+        User existingUser = buildUser(UserProvider.KAKAO, "111", "홍길동");
+        existingUser.changeSnsRefreshToken("previously-stored-value");
+        given(userRepository.findByProviderAndProviderId(UserProvider.KAKAO, "111"))
+                .willReturn(Optional.of(existingUser));
+        given(oAuthLoginCodeRedisRepository.issue(existingUser.getUserId())).willReturn("login-code-abc");
+
+        oAuthLoginService.callback(OAuthProvider.KAKAO, "auth-code", null);
+
+        assertThat(existingUser.getSnsRefreshToken()).isEqualTo("previously-stored-value");
+    }
+
+    @Test
     @DisplayName("콜백 성공 - GOOGLE 신규 유저 → 닉네임 정제되어 가입캐시 저장")
     void handleCallback_google_newUser_savesSignupCache() {
-        given(googleFetcher.fetch(eq("auth-code"), any())).willReturn(new OAuthUserProfile("google-sub-222", "newbie@gmail.com", "Google User!!"));
+        given(googleFetcher.fetch(eq("auth-code"), any()))
+                .willReturn(new OAuthUserProfile("google-sub-222", "newbie@gmail.com", "Google User!!", null));
         given(oAuthProperties.getFrontendRedirectUri()).willReturn(FRONTEND_REDIRECT_URI);
 
         given(userRepository.findByProviderAndProviderId(UserProvider.GOOGLE, "google-sub-222"))
@@ -230,14 +271,36 @@ class OAuthLoginServiceTest {
         assertThat(cache.providerId()).isEqualTo("google-sub-222");
         assertThat(cache.email()).isEqualTo("newbie@gmail.com");
         assertThat(cache.nickname()).isEqualTo("GoogleUser");
+        assertThat(cache.refreshToken()).isNull();
         assertThat(redirectUrl).contains("status=NEED_ADDITIONAL_INFO").contains("signupId=signup-id-google");
+    }
+
+    @Test
+    @DisplayName("콜백 성공 - GOOGLE 신규 유저가 refresh_token을 받으면, 원문이 아니라 암호화된 값이 가입캐시(Redis)에 담긴다 (2-2절)")
+    void handleCallback_google_newUser_cachesEncryptedRefreshTokenOnly() {
+        given(googleFetcher.fetch(eq("auth-code"), any()))
+                .willReturn(new OAuthUserProfile("google-sub-333", "newbie2@gmail.com", "구글신규", "raw-refresh-token"));
+        given(oAuthProperties.getFrontendRedirectUri()).willReturn(FRONTEND_REDIRECT_URI);
+        given(snsRefreshTokenCipher.encrypt("raw-refresh-token")).willReturn("encrypted-refresh-token");
+
+        given(userRepository.findByProviderAndProviderId(UserProvider.GOOGLE, "google-sub-333"))
+                .willReturn(Optional.empty());
+        given(userRepository.findByEmailIgnoreCase("newbie2@gmail.com")).willReturn(Optional.empty());
+        given(userRepository.existsByNickname("구글신규")).willReturn(false);
+        given(oAuthSignupRedisRepository.save(any(OAuthSignupCache.class))).willReturn("signup-id-google-2");
+
+        oAuthLoginService.callback(OAuthProvider.GOOGLE, "auth-code", null);
+
+        ArgumentCaptor<OAuthSignupCache> captor = ArgumentCaptor.forClass(OAuthSignupCache.class);
+        verify(oAuthSignupRedisRepository).save(captor.capture());
+        assertThat(captor.getValue().refreshToken()).isEqualTo("encrypted-refresh-token");
     }
 
     @Test
     @DisplayName("콜백 성공 - NAVER 기존 가입 유저 → fetchersByProvider가 NAVER를 NaverProfileFetcher로 매핑 + SUCCESS 리다이렉트")
     void handleCallback_naver_existingUser_issuesLoginCode() {
         given(naverFetcher.fetch(eq("auth-code"), eq("csrf-state-abc")))
-                .willReturn(new OAuthUserProfile("naver-333", "user@naver.com", "네이버유저"));
+                .willReturn(new OAuthUserProfile("naver-333", "user@naver.com", "네이버유저", null));
         given(oAuthProperties.getFrontendRedirectUri()).willReturn(FRONTEND_REDIRECT_URI);
 
         User existingUser = buildUser(UserProvider.NAVER, "naver-333", "네이버유저");
@@ -254,7 +317,7 @@ class OAuthLoginServiceTest {
     @DisplayName("콜백 성공 - NAVER 신규 유저 → 가입캐시 저장, NEED_ADDITIONAL_INFO 리다이렉트")
     void handleCallback_naver_newUser_savesSignupCache() {
         given(naverFetcher.fetch(eq("auth-code"), eq("csrf-state-xyz")))
-                .willReturn(new OAuthUserProfile("naver-444", "newbie@naver.com", "새유저"));
+                .willReturn(new OAuthUserProfile("naver-444", "newbie@naver.com", "새유저", null));
         given(oAuthProperties.getFrontendRedirectUri()).willReturn(FRONTEND_REDIRECT_URI);
 
         given(userRepository.findByProviderAndProviderId(UserProvider.NAVER, "naver-444"))

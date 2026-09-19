@@ -56,7 +56,7 @@ class OAuthCompleteServiceTest {
     private OAuthCompleteService oAuthCompleteService;
 
     private OAuthSignupCache cacheWithEmail() {
-        return new OAuthSignupCache(UserProvider.KAKAO, "111", "cached@example.com", "홍길동");
+        return new OAuthSignupCache(UserProvider.KAKAO, "111", "cached@example.com", "홍길동", null);
     }
 
     private OAuthCompleteRequest requestWithoutEmail() {
@@ -95,6 +95,26 @@ class OAuthCompleteServiceTest {
     }
 
     @Test
+    @DisplayName("가입 완료 성공 - 가입캐시의 (이미 암호화된) SNS refresh_token을 복호화/재암호화 없이 그대로 User에 옮겨 담는다 (C_SNS_연동해제.md 2-2절)")
+    void completeRegistration_copiesEncryptedRefreshTokenAsIs() {
+        OAuthSignupCache cacheWithRefreshToken =
+                new OAuthSignupCache(UserProvider.GOOGLE, "111", "cached@example.com", "홍길동", "already-encrypted-value");
+        given(oAuthSignupRedisRepository.find(SIGNUP_ID)).willReturn(Optional.of(cacheWithRefreshToken));
+        given(userRepository.existsByProviderAndProviderId(UserProvider.GOOGLE, "111")).willReturn(false);
+        given(userRepository.existsByEmail("cached@example.com")).willReturn(false);
+        given(userRepository.existsByNickname("홍길동")).willReturn(false);
+        given(jwtTokenProvider.createAccessToken(any(), any())).willReturn("access-token");
+        given(jwtTokenProvider.createRefreshToken(any())).willReturn("refresh-token");
+        given(jwtTokenProvider.getRefreshTokenExpiry()).willReturn(Duration.ofDays(7));
+
+        oAuthCompleteService.complete(requestWithoutEmail());
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getSnsRefreshToken()).isEqualTo("already-encrypted-value");
+    }
+
+    @Test
     @DisplayName("가입 완료 성공 - 요청의 email이 가입캐시 email보다 우선")
     void completeRegistration_requestEmailOverridesCache() {
         given(oAuthSignupRedisRepository.find(SIGNUP_ID)).willReturn(Optional.of(cacheWithEmail()));
@@ -127,7 +147,7 @@ class OAuthCompleteServiceTest {
     @Test
     @DisplayName("가입 완료 실패 - SNS도 이메일을 안 줬고 사용자도 입력 안 함")
     void completeRegistration_fail_emailRequired() {
-        OAuthSignupCache cacheWithoutEmail = new OAuthSignupCache(UserProvider.KAKAO, "111", null, "홍길동");
+        OAuthSignupCache cacheWithoutEmail = new OAuthSignupCache(UserProvider.KAKAO, "111", null, "홍길동", null);
         given(oAuthSignupRedisRepository.find(SIGNUP_ID)).willReturn(Optional.of(cacheWithoutEmail));
 
         assertThatThrownBy(() -> oAuthCompleteService.complete(requestWithoutEmail()))

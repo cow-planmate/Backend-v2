@@ -3,6 +3,7 @@ package com.planmate.domain.user.service;
 import com.planmate.common.exception.domain.DuplicateNicknameException;
 import com.planmate.common.exception.domain.UserNotFoundException;
 import com.planmate.common.storage.ProfileImageStorage;
+import com.planmate.domain.oauth.service.provider.SnsUnlinkClient;
 import com.planmate.domain.plan.entity.Plan;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -53,6 +56,8 @@ class UserServiceTest {
     private ProfileImageStorage profileImageStorage;
     @Mock
     private UserOutboxWriter userOutboxWriter;
+    @Mock
+    private SnsUnlinkClient googleUnlinkClient;
 
     @InjectMocks
     private UserService userService;
@@ -259,6 +264,9 @@ class UserServiceTest {
     @Test
     @DisplayName("resignAccount 성공 - 즉시 하드 삭제(softDelete는 outbox 발행용 메모리 플래그로만 호출) + 프로필 이미지 정리")
     void resignAccount_success() {
+        ReflectionTestUtils.setField(userService, "snsUnlinkClients", List.<SnsUnlinkClient>of());
+        userService.initUnlinkClients();
+
         User user = mock(User.class);
         given(user.getProfileImageUrl()).willReturn("https://example.com/profile.png");
         given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
@@ -281,5 +289,57 @@ class UserServiceTest {
 
         assertThatThrownBy(() -> userService.resignAccount(USER_ID))
                 .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("resignAccount 성공 - GOOGLE 유저 탈퇴 시 등록된 SnsUnlinkClient.unlink()를 호출한다 (C_SNS_연동해제.md 2-3절)")
+    void resignAccount_success_callsUnlinkClientForMatchingProvider() {
+        given(googleUnlinkClient.supports()).willReturn(UserProvider.GOOGLE);
+        ReflectionTestUtils.setField(userService, "snsUnlinkClients", List.of(googleUnlinkClient));
+        userService.initUnlinkClients();
+
+        User user = mock(User.class);
+        given(user.getProvider()).willReturn(UserProvider.GOOGLE);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        userService.resignAccount(USER_ID);
+
+        verify(googleUnlinkClient).unlink(user);
+        verify(userOutboxWriter).publish(user);
+    }
+
+    @Test
+    @DisplayName("resignAccount 성공 - SnsUnlinkClient.unlink() 실패해도 탈퇴 자체는 계속 진행된다 (best-effort, 2-3절/7장)")
+    void resignAccount_success_continuesWhenUnlinkFails() {
+        given(googleUnlinkClient.supports()).willReturn(UserProvider.GOOGLE);
+        willThrow(new RuntimeException("Google API down")).given(googleUnlinkClient).unlink(any());
+        ReflectionTestUtils.setField(userService, "snsUnlinkClients", List.of(googleUnlinkClient));
+        userService.initUnlinkClients();
+
+        User user = mock(User.class);
+        given(user.getProvider()).willReturn(UserProvider.GOOGLE);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        userService.resignAccount(USER_ID);
+
+        verify(userRepository).delete(user);
+        verify(userOutboxWriter).publish(user);
+    }
+
+    @Test
+    @DisplayName("resignAccount 성공 - LOCAL 유저는 등록된 provider가 없어 unlink 호출 없이 그대로 진행된다")
+    void resignAccount_success_localUser_skipsUnlink() {
+        given(googleUnlinkClient.supports()).willReturn(UserProvider.GOOGLE);
+        ReflectionTestUtils.setField(userService, "snsUnlinkClients", List.of(googleUnlinkClient));
+        userService.initUnlinkClients();
+
+        User user = mock(User.class);
+        given(user.getProvider()).willReturn(UserProvider.LOCAL);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        userService.resignAccount(USER_ID);
+
+        verify(googleUnlinkClient, never()).unlink(any());
+        verify(userOutboxWriter).publish(user);
     }
 }

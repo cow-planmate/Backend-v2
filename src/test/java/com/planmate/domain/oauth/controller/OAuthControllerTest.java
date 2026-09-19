@@ -496,7 +496,8 @@ class OAuthControllerTest {
     void complete_success() throws Exception {
         OAuthSignupCache cache = new OAuthSignupCache(
                 UserProvider.KAKAO, "kakao-" + UUID.randomUUID(),
-                "complete-it-" + UUID.randomUUID() + "@example.com", "완료테스트" + UUID.randomUUID().toString().substring(0, 6));
+                "complete-it-" + UUID.randomUUID() + "@example.com", "완료테스트" + UUID.randomUUID().toString().substring(0, 6),
+                null);
         String signupId = oAuthSignupRedisRepository.save(cache);
 
         OAuthCompleteRequest request = new OAuthCompleteRequest(signupId, null, LocalDate.of(2000, 3, 15), Gender.FEMALE);
@@ -558,7 +559,8 @@ class OAuthControllerTest {
 
         OAuthSignupCache cache = new OAuthSignupCache(
                 UserProvider.KAKAO, providerId,
-                "complete-race-" + UUID.randomUUID() + "@example.com", "race" + UUID.randomUUID().toString().substring(0, 6));
+                "complete-race-" + UUID.randomUUID() + "@example.com", "race" + UUID.randomUUID().toString().substring(0, 6),
+                null);
         String signupId = oAuthSignupRedisRepository.save(cache);
         leftoverSignupId = signupId; // 이 케이스는 실패해서 Service가 delete()까지 못 감 — 직접 정리 필요
 
@@ -588,7 +590,8 @@ class OAuthControllerTest {
 
         OAuthSignupCache cache = new OAuthSignupCache(
                 UserProvider.KAKAO, providerId,
-                "new-owner-" + UUID.randomUUID() + "@example.com", "new" + UUID.randomUUID().toString().substring(0, 6));
+                "new-owner-" + UUID.randomUUID() + "@example.com", "new" + UUID.randomUUID().toString().substring(0, 6),
+                null);
         String signupId = oAuthSignupRedisRepository.save(cache);
 
         OAuthCompleteRequest request = new OAuthCompleteRequest(signupId, null, LocalDate.of(2001, 5, 20), Gender.MALE);
