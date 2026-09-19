@@ -9,6 +9,7 @@ import com.planmate.domain.oauth.repository.OAuthSignupRedisRepository;
 import com.planmate.domain.oauth.service.provider.OAuthProfileFetcher;
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.repository.UserRepository;
+import com.planmate.security.SnsRefreshTokenCipher;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ public class OAuthLoginService {
     private final OAuthSignupRedisRepository oAuthSignupRedisRepository;
     private final OAuthNicknamePolicy nicknamePolicy;
     private final List<OAuthProfileFetcher> profileFetchers;
+    private final SnsRefreshTokenCipher snsRefreshTokenCipher;
 
     private Map<OAuthProvider, OAuthProfileFetcher> fetchersByProvider;
 
@@ -83,7 +85,15 @@ public class OAuthLoginService {
         Optional<User> existingUser = userRepository.findByProviderAndProviderId(provider.toUserProvider(), providerId);
 
         if (existingUser.isPresent()) {
-            String loginCode = oAuthLoginCodeRedisRepository.issue(existingUser.get().getUserId());
+            User user = existingUser.get();
+            // GOOGLE만 매 로그인마다 refresh_token을 다시 내려준다(prompt=consent) — 받자마자 즉시
+            // 암호화한다. null(KAKAO/NAVER, 또는 GOOGLE인데 이례적으로 안 내려온 경우)이면 기존 값을
+            // 건드리지 않는다 — 유효했던 이전 값을 이유 없이 지우지 않기 위해서다.
+            // (04_기능/OAuth/C_SNS_연동해제.md 2-1절)
+            if (profile.getRefreshToken() != null) {
+                user.changeSnsRefreshToken(snsRefreshTokenCipher.encrypt(profile.getRefreshToken()));
+            }
+            String loginCode = oAuthLoginCodeRedisRepository.issue(user.getUserId());
             return buildLoginCodeRedirect(loginCode);
         }
 
@@ -97,11 +107,18 @@ public class OAuthLoginService {
         String sanitized = nicknamePolicy.sanitize(profile.getNickname());
         String finalNickname = nicknamePolicy.resolveUnique(sanitized);
 
+        // 암호화는 여기(콜백, 받는 즉시)에서 끝낸다 — B(가입완료)로 미루면 A~B 사이(최대 TTL
+        // 15분) Redis에 원문 refresh_token이 그대로 노출된다(04_기능/OAuth/C_SNS_연동해제.md 2-2절).
+        String encryptedRefreshToken = profile.getRefreshToken() != null
+                ? snsRefreshTokenCipher.encrypt(profile.getRefreshToken())
+                : null;
+
         OAuthSignupCache cache = new OAuthSignupCache(
                 provider.toUserProvider(),
                 providerId,
                 email,
-                finalNickname
+                finalNickname,
+                encryptedRefreshToken
         );
         String signupId = oAuthSignupRedisRepository.save(cache);
 

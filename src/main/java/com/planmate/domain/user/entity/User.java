@@ -73,6 +73,14 @@ public class User extends BaseSoftDeleteEntity {
     @Column(name = "fcm_token", columnDefinition = "TEXT")
     private String fcmToken;
 
+    /**
+     * SNS 로그인 refresh_token — AES-GCM으로 암호화된 값만 저장한다({@code SnsRefreshTokenCipher}).
+     * provider별로 컬럼을 나누지 않는 이유는 {@link #provider}가 계정당 하나뿐이라서다
+     * (04_기능/OAuth/C_SNS_연동해제.md 0-4절). 현재는 GOOGLE만 채워 넣는다.
+     */
+    @Column(name = "sns_refresh_token", columnDefinition = "TEXT")
+    private String snsRefreshToken;
+
     /** 프로필 이미지 공개 URL. null이면 클라이언트가 이메일 기반 Gravatar로 대체한다. */
     @Column(name = "profile_image_url", length = 500)
     private String profileImageUrl;
@@ -129,6 +137,10 @@ public class User extends BaseSoftDeleteEntity {
 
     public void changeFcmToken(String newFcmToken) {
         this.fcmToken = newFcmToken;
+    }
+
+    public void changeSnsRefreshToken(String newSnsRefreshToken) {
+        this.snsRefreshToken = newSnsRefreshToken;
     }
 
     public void changeProfilePublic(boolean newProfilePublic) {

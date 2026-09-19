@@ -4,6 +4,7 @@ import com.planmate.common.exception.domain.DuplicateNicknameException;
 import com.planmate.common.exception.domain.ProfilePrivateException;
 import com.planmate.common.exception.domain.UserNotFoundException;
 import com.planmate.common.storage.ProfileImageStorage;
+import com.planmate.domain.oauth.service.provider.SnsUnlinkClient;
 import com.planmate.domain.plan.entity.PlanMember;
 import com.planmate.domain.plan.enums.PlanMemberRole;
 import com.planmate.domain.plan.repository.PlanMemberRepository;
@@ -19,15 +20,21 @@ import com.planmate.domain.user.enums.UserProvider;
 import com.planmate.domain.user.internal.outbox.UserOutboxWriter;
 import com.planmate.domain.user.repository.UserRepository;
 import com.planmate.domain.user.validator.ProfileImageValidator;
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -38,6 +45,15 @@ public class UserService {
     private final ProfileImageStorage profileImageStorage;
     private final ProfileImageValidator profileImageValidator;
     private final UserOutboxWriter userOutboxWriter;
+    private final List<SnsUnlinkClient> snsUnlinkClients;
+
+    private Map<UserProvider, SnsUnlinkClient> unlinkClientsByProvider;
+
+    @PostConstruct
+    void initUnlinkClients() {
+        unlinkClientsByProvider = snsUnlinkClients.stream()
+                .collect(Collectors.toMap(SnsUnlinkClient::supports, Function.identity()));
+    }
 
     @Transactional(readOnly = true)
     public UserProfileResponse getProfile(UUID userId) {
@@ -195,6 +211,23 @@ public class UserService {
         // best-effort. publish() 보다 먼저 — advisory lock 임계구역을 MinIO 호출만큼
         // 늘리지 않기 위해서다(UserOutboxWriter.publish 문서 참고).
         profileImageStorage.delete(profileImageUrl);
+        unlinkSnsIfSupported(user);
         userOutboxWriter.publish(user);
+    }
+
+    /**
+     * SNS 연동 해제 — best-effort. 실패해도 탈퇴 자체는 막지 않는다(04_기능/OAuth/C_SNS_연동해제.md
+     * 2-3절/7장) — 사용자에게 "탈퇴는 됐는데 연동 해제만 실패했다"는 혼란을 주지 않기 위해서다.
+     */
+    private void unlinkSnsIfSupported(User user) {
+        SnsUnlinkClient client = unlinkClientsByProvider.get(user.getProvider());
+        if (client == null) {
+            return;   // LOCAL, 또는 아직 구현체 없는 provider(KAKAO/NAVER)
+        }
+        try {
+            client.unlink(user);
+        } catch (Exception e) {
+            log.warn("SNS 연동 해제 실패 — 탈퇴 처리는 계속 진행 (provider={})", user.getProvider(), e);
+        }
     }
 }
