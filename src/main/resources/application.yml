@@ -146,11 +146,6 @@ grpc:
 api:
   odsay:
     key: ${ODSAY_API_KEY:}
-  kakao:
-    # 카카오 로컬(장소 검색) REST API 키. 지도 SDK의 JavaScript 키와 다른 키다.
-    rest-key: ${KAKAO_REST_API_KEY:}
-  google:
-    key: ${GOOGLE_PLACES_API_KEY:}
 
 firebase:
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
