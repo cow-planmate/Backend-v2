@@ -8,6 +8,8 @@ import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
 import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
 import com.planmate.domain.destination.repository.DestinationRepository;
+import com.planmate.domain.place.dto.PlaceKeywordSearchCriteria;
+import com.planmate.domain.place.dto.PlaceKeywordSearchRequest;
 import com.planmate.domain.place.dto.PlaceSearchCriteria;
 import com.planmate.domain.place.dto.PlaceSearchRequest;
 import com.planmate.domain.place.dto.PlaceSearchResponse;
@@ -225,6 +227,56 @@ class PlaceServiceTest {
                 .willThrow(new PlaceCacheQueryException(new RuntimeException("db down")));
 
         assertThatThrownBy(() -> placeService.searchPlaces(request(PlaceCategory.ACCOMMODATION, 1, 20), null))
+                .isInstanceOf(PlaceCacheQueryException.class);
+    }
+
+    // ---------- searchByKeyword (이름 검색, place/10_장소검색_캐시DB_설계.md) ----------
+
+    private PlaceKeywordSearchRequest keywordRequest(String query, Integer page, Integer size) {
+        return new PlaceKeywordSearchRequest(query, page, size);
+    }
+
+    @Test
+    @DisplayName("searchByKeyword 성공 - query/page/size가 그대로 criteria에 담기고 응답에 count/hasNext 반영")
+    void searchByKeyword_success() {
+        ArgumentCaptor<PlaceKeywordSearchCriteria> captor = ArgumentCaptor.forClass(PlaceKeywordSearchCriteria.class);
+        given(placeCacheRepository.searchByKeyword(captor.capture()))
+                .willReturn(List.of(placeRow("1", "39"), placeRow("2", "39")));
+        given(placeCacheRepository.countByKeyword(any(PlaceKeywordSearchCriteria.class))).willReturn(30L);
+
+        PlaceSearchResponse response = placeService.searchByKeyword(keywordRequest("해운대", 1, 20));
+
+        assertThat(response.places()).hasSize(2);
+        assertThat(response.totalCount()).isEqualTo(30L);
+        assertThat(response.page()).isEqualTo(1);
+        assertThat(response.size()).isEqualTo(20);
+        assertThat(response.hasNext()).isTrue(); // offset 0 + 2 < 30
+
+        PlaceKeywordSearchCriteria criteria = captor.getValue();
+        assertThat(criteria.query()).isEqualTo("해운대");
+        assertThat(criteria.page()).isEqualTo(1);
+        assertThat(criteria.size()).isEqualTo(20);
+    }
+
+    @Test
+    @DisplayName("searchByKeyword - 마지막 페이지(offset+건수 >= totalCount)면 hasNext=false")
+    void searchByKeyword_hasNextFalseOnLastPage() {
+        given(placeCacheRepository.searchByKeyword(any(PlaceKeywordSearchCriteria.class)))
+                .willReturn(List.of(placeRow("1", "12"), placeRow("2", "12")));
+        given(placeCacheRepository.countByKeyword(any(PlaceKeywordSearchCriteria.class))).willReturn(2L);
+
+        PlaceSearchResponse response = placeService.searchByKeyword(keywordRequest("경복궁", 1, 20));
+
+        assertThat(response.hasNext()).isFalse();
+    }
+
+    @Test
+    @DisplayName("searchByKeyword - 캐시 DB 조회 실패(PlaceCacheQueryException)는 그대로 전파됨")
+    void searchByKeyword_cacheQueryFailurePropagates() {
+        given(placeCacheRepository.searchByKeyword(any(PlaceKeywordSearchCriteria.class)))
+                .willThrow(new PlaceCacheQueryException(new RuntimeException("db down")));
+
+        assertThatThrownBy(() -> placeService.searchByKeyword(keywordRequest("경복궁", 1, 20)))
                 .isInstanceOf(PlaceCacheQueryException.class);
     }
 

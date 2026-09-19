@@ -2,6 +2,7 @@ package com.planmate.domain.place.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.planmate.domain.place.dto.PlaceKeywordSearchCriteria;
 import com.planmate.domain.place.dto.PlaceSearchCriteria;
 import com.planmate.domain.place.dto.PlaceSearchCriteria.RegionCode;
 import com.planmate.domain.place.dto.PlaceSearchCriteria.ThemeCode;
@@ -152,5 +153,72 @@ class PlaceCacheRepositoryIT {
                 Map.of(), Long.class);
 
         assertThat(repoCount).isEqualTo(rawCount);
+    }
+
+    // ---------- searchByKeyword (이름 검색, place/10_장소검색_캐시DB_설계.md §7-3) ----------
+
+    private PlaceKeywordSearchCriteria keywordCriteria(String query, int page, int size) {
+        return new PlaceKeywordSearchCriteria(query, page, size);
+    }
+
+    @Test
+    void 부분일치하는_장소가_검색된다() {
+        List<PlaceRow> rows = repository.searchByKeyword(keywordCriteria("경복궁", 1, 20));
+
+        assertThat(rows).isNotEmpty();
+        assertThat(rows).anySatisfy(r -> assertThat(r.title()).contains("경복궁"));
+    }
+
+    @Test
+    void 정확히_일치하는_이름이_최상위로_온다() {
+        List<PlaceRow> rows = repository.searchByKeyword(keywordCriteria("경복궁", 1, 20));
+
+        assertThat(rows).isNotEmpty();
+        assertThat(rows.get(0).title()).isEqualTo("경복궁");
+    }
+
+    @Test
+    void 완성형_오타여도_원래_장소가_상위권에_잡힌다() {
+        // "해운대"의 마지막 음절 오타(대→데) — ILIKE 부분일치로도 안 걸리는 케이스
+        List<PlaceRow> rows = repository.searchByKeyword(keywordCriteria("해운데", 1, 20));
+
+        assertThat(rows).isNotEmpty();
+        assertThat(rows).anySatisfy(r -> assertThat(r.title()).contains("해운대"));
+    }
+
+    @Test
+    void 짧은_지명_오타는_자모분해_없이는_안_잡히지만_이번_구현은_잡는다() {
+        // "경복궁"(3음절) 1글자 오타 "겅복궁" — 음절 단위 유사도(0.14)는 임계값(0.15) 미달,
+        // 자모분해 유사도(0.53)만 임계값을 넘는 케이스. 자모분해가 실제로 동작하는지 검증.
+        List<PlaceRow> rows = repository.searchByKeyword(keywordCriteria("겅복궁", 1, 20));
+
+        assertThat(rows).isNotEmpty();
+        assertThat(rows).anySatisfy(r -> assertThat(r.title()).isEqualTo("경복궁"));
+    }
+
+    @Test
+    void 쇼핑_축제_코스_레포츠는_검색_대상에서_제외된다() {
+        // "이마트"는 place_list에 content_type_id=38(쇼핑)로만 365건 존재 — 필터링되면 0건이어야 함.
+        List<PlaceRow> rows = repository.searchByKeyword(keywordCriteria("이마트", 1, 20));
+
+        assertThat(rows).allSatisfy(r -> assertThat(r.contentTypeId()).isIn("12", "14", "32", "39"));
+    }
+
+    @Test
+    void countByKeyword는_searchByKeyword와_같은_필터의_전체_건수다() {
+        PlaceKeywordSearchCriteria c = keywordCriteria("해운대", 1, 20);
+
+        long total = repository.countByKeyword(c);
+        List<PlaceRow> firstPage = repository.searchByKeyword(c);
+
+        assertThat(total).isGreaterThanOrEqualTo(firstPage.size());
+    }
+
+    @Test
+    void 검색어에_퍼센트_기호가_있어도_와일드카드로_해석되지_않는다() {
+        // '%'를 이스케이프하지 않으면 ILIKE '%%%'가 전체 매치가 되어 대량의 무관한 결과가 나온다.
+        List<PlaceRow> rows = repository.searchByKeyword(keywordCriteria("%", 1, 20));
+
+        assertThat(rows).isEmpty();
     }
 }

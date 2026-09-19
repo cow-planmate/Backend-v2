@@ -5,6 +5,8 @@ import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
 import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
 import com.planmate.domain.destination.repository.DestinationRepository;
+import com.planmate.domain.place.dto.PlaceKeywordSearchCriteria;
+import com.planmate.domain.place.dto.PlaceKeywordSearchRequest;
 import com.planmate.domain.place.dto.PlaceSearchCriteria;
 import com.planmate.domain.place.dto.PlaceSearchRequest;
 import com.planmate.domain.place.dto.PlaceSearchResponse;
@@ -58,6 +60,30 @@ public class PlaceService {
                 .map(PlaceSummaryDto::from)
                 .toList();
         long totalCount = placeCacheRepository.count(criteria);
+        boolean hasNext = criteria.offset() + places.size() < totalCount;
+
+        return PlaceSearchResponse.builder()
+                .places(places)
+                .totalCount(totalCount)
+                .page(request.page())
+                .size(request.size())
+                .hasNext(hasNext)
+                .build();
+    }
+
+    /**
+     * 이름으로 장소 찾기 — 지역/카테고리 필터 없이 전국 대상, 부분일치+유사도 랭킹.
+     * place/10_장소검색_캐시DB_설계.md §3·§6.
+     */
+    @Transactional(readOnly = true)
+    public PlaceSearchResponse searchByKeyword(PlaceKeywordSearchRequest request) {
+        PlaceKeywordSearchCriteria criteria =
+                new PlaceKeywordSearchCriteria(request.query(), request.page(), request.size());
+
+        List<PlaceSummaryDto> places = placeCacheRepository.searchByKeyword(criteria).stream()
+                .map(PlaceSummaryDto::from)
+                .toList();
+        long totalCount = placeCacheRepository.countByKeyword(criteria);
         boolean hasNext = criteria.offset() + places.size() < totalCount;
 
         return PlaceSearchResponse.builder()
