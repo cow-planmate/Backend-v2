@@ -1,11 +1,14 @@
 package com.planmate.domain.place.repository;
 
 import com.planmate.common.exception.domain.PlaceCacheQueryException;
+import com.planmate.domain.place.dto.PlaceKeywordSearchCriteria;
 import com.planmate.domain.place.dto.PlaceSearchCriteria;
+import com.planmate.domain.place.enums.PlaceCategory;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -27,6 +30,19 @@ public class PlaceCacheRepository {
 
     @Qualifier("tourdataJdbcTemplate")
     private final NamedParameterJdbcTemplate jdbc;
+
+    // 추측치, 실측 후 조정. place/10_장소검색_캐시DB_설계.md §7-3.
+    private static final double SIMILARITY_THRESHOLD = 0.15;
+
+    // 장소 검색도 PlaceCategory가 다루는 4개 타입(12/14/32/39)으로 제한한다 — place_list엔
+    // 15(축제)/25(코스)/28(레포츠)/38(쇼핑)도 있는데, PlaceCategory.fromContentTypeId가 이 4개만
+    // 알아서 그대로 두면 PlaceSummaryDto.from(row)에서 IllegalArgumentException이 던져진다
+    // (실제로 전체 place_list의 약 36%가 이 4개 타입이라 우연이 아니라 거의 매번 재현됨).
+    // blockCategory도 ATTRACTION/ACCOMMODATION/RESTAURANT/FREE/SEARCH뿐이라 쇼핑몰을 찾아도
+    // 일정에 못 넣는 구조 — 검색 범위를 여기로 제한하는 게 자연스럽다는 판단(2026-09-20 결정).
+    private static final List<String> SEARCHABLE_CONTENT_TYPE_IDS = Arrays.stream(PlaceCategory.values())
+            .flatMap(category -> category.contentTypeIds().stream())
+            .toList();
 
     private static final RowMapper<PlaceRow> ROW_MAPPER = (rs, rowNum) -> new PlaceRow(
             textOrNull(rs, "content_id"),
@@ -79,6 +95,66 @@ public class PlaceCacheRepository {
         } catch (DataAccessException e) {
             throw new PlaceCacheQueryException(e);
         }
+    }
+
+    /**
+     * 이름으로 장소 찾기 — 지역 필터는 없이 전국 대상이지만, 카테고리는 {@code PlaceCategory}가
+     * 다루는 4개 타입(관광지/문화시설/숙박/음식점)으로 제한한다(§ SEARCHABLE_CONTENT_TYPE_IDS).
+     * 부분일치(ILIKE)는 항상 잡고, 유사도(음절/자모)는 오타 케이스를 추가로 잡는다.
+     * 정렬은 둘 중 더 높은 유사도 내림차순. place/10_장소검색_캐시DB_설계.md §7-3.
+     */
+    public List<PlaceRow> searchByKeyword(PlaceKeywordSearchCriteria criteria) {
+        MapSqlParameterSource params = keywordParams(criteria);
+
+        String sql = "SELECT content_id, content_type_id, title, addr1, mapx, mapy, firstimage2, cpyrht_div_cd, "
+                + "  GREATEST(similarity(title, :query), similarity(hangul_jamo(title), hangul_jamo(:query))) AS score "
+                + "FROM place_list "
+                + "WHERE " + keywordPredicate()
+                + "ORDER BY score DESC, content_id "
+                + "LIMIT :size OFFSET :offset";
+
+        try {
+            return jdbc.query(sql, params, ROW_MAPPER);
+        } catch (DataAccessException e) {
+            throw new PlaceCacheQueryException(e);
+        }
+    }
+
+    /** {@code searchByKeyword}와 동일한 WHERE 조건의 전체 건수 — 정확한 totalCount. */
+    public long countByKeyword(PlaceKeywordSearchCriteria criteria) {
+        MapSqlParameterSource params = keywordParams(criteria);
+
+        String sql = "SELECT count(*) FROM place_list WHERE " + keywordPredicate();
+
+        try {
+            Long total = jdbc.queryForObject(sql, params, Long.class);
+            return total == null ? 0L : total;
+        } catch (DataAccessException e) {
+            throw new PlaceCacheQueryException(e);
+        }
+    }
+
+    private static MapSqlParameterSource keywordParams(PlaceKeywordSearchCriteria criteria) {
+        return new MapSqlParameterSource()
+                .addValue("query", criteria.query())
+                .addValue("likePattern", "%" + escapeLikeWildcards(criteria.query()) + "%")
+                .addValue("threshold", SIMILARITY_THRESHOLD)
+                .addValue("contentTypeIds", SEARCHABLE_CONTENT_TYPE_IDS)
+                .addValue("size", criteria.size())
+                .addValue("offset", criteria.offset());
+    }
+
+    private static String keywordPredicate() {
+        return "content_type_id IN (:contentTypeIds) "
+                + "  AND (title ILIKE :likePattern ESCAPE '\\' "
+                + "   OR similarity(title, :query) > :threshold "
+                + "   OR similarity(hangul_jamo(title), hangul_jamo(:query)) > :threshold) ";
+    }
+
+    // query에 %/_가 그대로 들어오면 LIKE 와일드카드로 해석된다(SQL 인젝션 위험은 없음 — 바인드
+    // 파라미터라 값 자체가 문자열로만 처리됨). 의도치 않게 조건이 느슨해지는 것만 막는다.
+    private static String escapeLikeWildcards(String query) {
+        return query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     // (ldong_regn_cd = :rcN AND (CAST(:scN AS text) IS NULL OR ldong_signgu_cd = :scN)) OR ...
