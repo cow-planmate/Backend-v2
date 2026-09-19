@@ -6,10 +6,6 @@ import com.planmate.common.exception.domain.DestinationNotFoundException;
 import com.planmate.common.exception.domain.GooglePlacesApiCallFailedException;
 import com.planmate.common.exception.domain.PlaceCacheQueryException;
 import com.planmate.common.externalAPI.GooglePlaceImageWorker;
-import com.planmate.common.externalAPI.GoogleSearchClient;
-import com.planmate.common.externalAPI.GoogleSearchClient.GoogleTextSearchItem;
-import com.planmate.common.externalAPI.GoogleSearchClient.GoogleTextSearchResult;
-import com.planmate.common.externalAPI.KakaoLocalClient;
 import com.planmate.common.storage.GooglePlaceImageStorage;
 import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
 import com.planmate.domain.destination.entity.Destination;
@@ -18,9 +14,6 @@ import com.planmate.domain.destination.repository.DestinationRepository;
 import com.planmate.domain.place.dto.PlaceSearchCriteria;
 import com.planmate.domain.place.dto.PlaceSearchRequest;
 import com.planmate.domain.place.dto.PlaceSearchResponse;
-import com.planmate.domain.place.dto.PlaceTextSearchNextRequest;
-import com.planmate.domain.place.dto.PlaceTextSearchRequest;
-import com.planmate.domain.place.dto.PlaceTextSearchResponse;
 import com.planmate.domain.place.enums.PlaceCategory;
 import com.planmate.domain.place.repository.PlaceCacheRepository;
 import com.planmate.domain.place.repository.PlaceCacheRepository.PlaceRow;
@@ -66,11 +59,7 @@ class PlaceServiceTest {
     @Mock
     private PlaceCacheRepository placeCacheRepository;
     @Mock
-    private KakaoLocalClient kakaoLocalClient;
-    @Mock
     private DestinationRepository destinationRepository;
-    @Mock
-    private GoogleSearchClient googleSearchClient;
     @Mock
     private GooglePlaceImageStorage googlePlaceImageStorage;
     @Mock
@@ -81,8 +70,7 @@ class PlaceServiceTest {
     @BeforeEach
     void setUp() {
         placeService = new PlaceService(destinationRegionCodeCache, userPreferredThemeRepository,
-                preferredThemeLclsSystmCache, placeCacheRepository, kakaoLocalClient,
-                destinationRepository, googleSearchClient);
+                preferredThemeLclsSystmCache, placeCacheRepository, destinationRepository);
     }
 
     private DestinationRegionCode regionCode(String ldongRegnCd, String ldongSignguCd) {
@@ -247,114 +235,4 @@ class PlaceServiceTest {
                 .isInstanceOf(PlaceCacheQueryException.class);
     }
 
-    // ---------- searchByText (Google Text Search, 07_키워드검색_API_상세설계.md) — 변경 없음 ----------
-
-    private GoogleTextSearchItem googleItem(String placeId, String photoReference) {
-        return new GoogleTextSearchItem(placeId, "장소" + placeId, "주소", 37.5, 127.0, photoReference);
-    }
-
-    @Test
-    @DisplayName("searchByText - destinationId 없으면 좌표 바이어스 없이 순수 텍스트로 검색")
-    void searchByText_noDestinationId_noBias() {
-        given(googleSearchClient.searchPlace("경복궁", null, null))
-                .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-1", null)), null));
-
-        PlaceTextSearchResponse response = placeService.searchByText(new PlaceTextSearchRequest("경복궁", null));
-
-        assertThat(response.places()).hasSize(1);
-        assertThat(response.places().get(0).placeId()).isEqualTo("place-1");
-        assertThat(response.nextPageToken()).isNull();
-        verify(destinationRepository, never()).findById(any());
-    }
-
-    @Test
-    @DisplayName("searchByText - destinationId가 있으면 그 목적지 좌표를 Google에 바이어스로 전달")
-    void searchByText_withDestinationId_passesCoordinatesAsBias() {
-        Destination busan = Destination.builder()
-                .destinationId(DESTINATION_ID)
-                .destinationName("부산")
-                .latitude(new BigDecimal("35.17945000"))
-                .longitude(new BigDecimal("129.07556000"))
-                .build();
-        given(destinationRepository.findById(DESTINATION_ID)).willReturn(Optional.of(busan));
-        given(googleSearchClient.searchPlace(eq("해운대"), eq(35.17945), eq(129.07556)))
-                .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-2", null)), "next-token"));
-
-        PlaceTextSearchResponse response = placeService.searchByText(new PlaceTextSearchRequest("해운대", DESTINATION_ID));
-
-        assertThat(response.places()).hasSize(1);
-        assertThat(response.nextPageToken()).isEqualTo("next-token");
-        verify(googleSearchClient).searchPlace("해운대", 35.17945, 129.07556);
-    }
-
-    @Test
-    @DisplayName("searchByText - 존재하지 않는 destinationId면 DestinationNotFoundException")
-    void searchByText_destinationNotFound() {
-        given(destinationRepository.findById(999)).willReturn(Optional.empty());
-
-        assertThatThrownBy(() -> placeService.searchByText(new PlaceTextSearchRequest("아무거나", 999)))
-                .isInstanceOf(DestinationNotFoundException.class);
-    }
-
-    @Test
-    @DisplayName("searchByText - 이미지 API 주소를 반환하고 검색에서 사진을 조회하지 않음")
-    void searchByText_usesCachedThumbnail_doesNotRefetch() {
-        given(googleSearchClient.searchPlace("스타벅스", null, null))
-                .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-3", "ref-3")), null));
-
-        PlaceTextSearchResponse response = placeService.searchByText(new PlaceTextSearchRequest("스타벅스", null));
-
-        assertThat(response.places().get(0).thumbnailUrl())
-                .isEqualTo("/api/image/place/place-3");
-        verifyNoInteractions(googlePlaceImageWorker, googlePlaceImageStorage);
-    }
-
-    @Test
-    @DisplayName("searchByText - 첫 검색에서도 이미지 API 주소를 반환")
-    void searchByText_missingThumbnail_triggersAsyncFillWithoutBlocking() {
-        given(googleSearchClient.searchPlace("무명카페", null, null))
-                .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-4", "ref-4")), null));
-
-        PlaceTextSearchResponse response = placeService.searchByText(new PlaceTextSearchRequest("무명카페", null));
-
-        assertThat(response.places().get(0).thumbnailUrl()).isEqualTo("/api/image/place/place-4");
-        verifyNoInteractions(googlePlaceImageWorker, googlePlaceImageStorage);
-    }
-
-    @Test
-    @DisplayName("searchByText - 평점 등 Google 전용 필드는 응답에 없다(추천과 동일 필드만 노출)")
-    void searchByText_responseHasNoRatingLikeFields() {
-        given(googleSearchClient.searchPlace("아무데나", null, null))
-                .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-5", null)), null));
-
-        PlaceTextSearchResponse response = placeService.searchByText(new PlaceTextSearchRequest("아무데나", null));
-
-        assertThat(response.places().get(0).name()).isEqualTo("장소place-5");
-        assertThat(response.places().get(0).latitude()).isEqualTo(37.5);
-        assertThat(response.places().get(0).longitude()).isEqualTo(127.0);
-    }
-
-    @Test
-    @DisplayName("searchByText - Google API 호출 실패는 그대로 전파됨")
-    void searchByText_googleApiFailurePropagates() {
-        given(googleSearchClient.searchPlace(any(), any(), any()))
-                .willThrow(new GooglePlacesApiCallFailedException());
-
-        assertThatThrownBy(() -> placeService.searchByText(new PlaceTextSearchRequest("아무거나", null)))
-                .isInstanceOf(GooglePlacesApiCallFailedException.class);
-    }
-
-    @Test
-    @DisplayName("searchByTextNextPage - 직전 응답의 pageToken을 그대로 Google에 전달하고 동일하게 응답을 구성")
-    void searchByTextNextPage_passesTokenThrough() {
-        given(googleSearchClient.searchNextPage("token-abc"))
-                .willReturn(new GoogleTextSearchResult(List.of(googleItem("place-6", null)), "token-def"));
-
-        PlaceTextSearchResponse response = placeService.searchByTextNextPage(
-                new PlaceTextSearchNextRequest("검색어", "token-abc"));
-
-        assertThat(response.places()).hasSize(1);
-        assertThat(response.nextPageToken()).isEqualTo("token-def");
-        verify(googleSearchClient).searchNextPage("token-abc");
-    }
 }
