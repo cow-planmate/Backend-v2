@@ -2,10 +2,13 @@ package com.planmate.domain.user.repository;
 
 import com.planmate.domain.user.entity.User;
 import com.planmate.domain.user.enums.UserProvider;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -80,4 +83,24 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             """, nativeQuery = true)
     List<User> findSnapshotPageIncludingDeleted(@Param("afterUserId") UUID afterUserId,
                                                 @Param("limit") int limit);
+
+    // 관리자 회원 검색 — 닉네임·이메일 부분 일치(대소문자 무시), 정지 중인 회원만 보기 옵션.
+    // @SQLRestriction 이 탈퇴 계정을 자동으로 뺀다.
+    @Query(value = """
+            SELECT u FROM User u
+             WHERE (LOWER(u.nickname) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                 OR LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%')))
+               AND (:suspendedOnly = false OR u.suspendedUntil > :now)
+             ORDER BY u.createdAt DESC
+            """,
+            countQuery = """
+            SELECT COUNT(u) FROM User u
+             WHERE (LOWER(u.nickname) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                 OR LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%')))
+               AND (:suspendedOnly = false OR u.suspendedUntil > :now)
+            """)
+    Page<User> searchForAdmin(@Param("keyword") String keyword,
+                              @Param("suspendedOnly") boolean suspendedOnly,
+                              @Param("now") LocalDateTime now,
+                              Pageable pageable);
 }
