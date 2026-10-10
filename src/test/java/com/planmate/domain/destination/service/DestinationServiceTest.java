@@ -1,8 +1,11 @@
 package com.planmate.domain.destination.service;
 
+import com.planmate.domain.destination.cache.CachedResponse;
+import com.planmate.domain.destination.cache.DestinationResponseCache;
+import com.planmate.domain.destination.dto.DestinationDto;
 import com.planmate.domain.destination.dto.DestinationListResponse;
-import com.planmate.domain.destination.entity.Destination;
-import com.planmate.domain.destination.repository.DestinationRepository;
+import com.planmate.domain.destination.dto.DestinationNodeDto;
+import com.planmate.domain.destination.dto.DestinationTreeResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,7 +13,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,7 +22,7 @@ import static org.mockito.BDDMockito.given;
 class DestinationServiceTest {
 
     @Mock
-    private DestinationRepository destinationRepository;
+    private DestinationResponseCache destinationResponseCache;
 
     @InjectMocks
     private DestinationService destinationService;
@@ -28,37 +30,41 @@ class DestinationServiceTest {
     // ---------- getDestinations ----------
 
     @Test
-    @DisplayName("여행지 목록 조회 성공 - 전체 목록을 destinationId/destinationName만 담아 반환")
+    @DisplayName("여행지 1차 목록 조회 성공 - 기동 시 만들어 둔 featured 목록과 ETag를 그대로 반환한다")
     void getDestinations_success() {
-        Destination seoul = Destination.builder()
-                .destinationId(1)
-                .destinationName("서울")
-                .latitude(new BigDecimal("37.56330000"))
-                .longitude(new BigDecimal("126.97970000"))
-                .build();
-        Destination busan = Destination.builder()
-                .destinationId(2)
-                .destinationName("부산")
-                .latitude(new BigDecimal("35.17960000"))
-                .longitude(new BigDecimal("129.07560000"))
-                .build();
-        given(destinationRepository.findAll()).willReturn(List.of(seoul, busan));
+        CachedResponse<DestinationListResponse> cached = new CachedResponse<>(
+                DestinationListResponse.builder()
+                        .destinations(List.of(new DestinationDto(1, "서울"), new DestinationDto(20, "부산")))
+                        .build(),
+                "etag-list");
+        given(destinationResponseCache.featuredList()).willReturn(cached);
 
-        DestinationListResponse response = destinationService.getDestinations();
+        CachedResponse<DestinationListResponse> result = destinationService.getDestinations();
 
-        assertThat(response.destinations()).hasSize(2);
-        assertThat(response.destinations().get(0).destinationId()).isEqualTo(1);
-        assertThat(response.destinations().get(0).destinationName()).isEqualTo("서울");
-        assertThat(response.destinations().get(1).destinationName()).isEqualTo("부산");
+        assertThat(result.etag()).isEqualTo("etag-list");
+        assertThat(result.body().destinations())
+                .extracting(DestinationDto::destinationName)
+                .containsExactly("서울", "부산");
     }
 
+    // ---------- getDestinationTree ----------
+
     @Test
-    @DisplayName("여행지 목록 조회 성공 - 데이터가 없으면 빈 리스트 반환")
-    void getDestinations_success_empty() {
-        given(destinationRepository.findAll()).willReturn(List.of());
+    @DisplayName("여행지 트리 조회 성공 - 기동 시 만들어 둔 트리와 ETag를 그대로 반환한다")
+    void getDestinationTree_success() {
+        DestinationNodeDto gyeonggi = DestinationNodeDto.builder()
+                .destinationId(29).destinationName("경기").featured(false)
+                .children(List.of(DestinationNodeDto.builder()
+                        .destinationId(3).destinationName("수원").featured(true).build()))
+                .build();
+        CachedResponse<DestinationTreeResponse> cached = new CachedResponse<>(
+                DestinationTreeResponse.builder().sidos(List.of(gyeonggi)).build(),
+                "etag-tree");
+        given(destinationResponseCache.tree()).willReturn(cached);
 
-        DestinationListResponse response = destinationService.getDestinations();
+        CachedResponse<DestinationTreeResponse> result = destinationService.getDestinationTree();
 
-        assertThat(response.destinations()).isEmpty();
+        assertThat(result.etag()).isEqualTo("etag-tree");
+        assertThat(result.body().sidos()).containsExactly(gyeonggi);
     }
 }

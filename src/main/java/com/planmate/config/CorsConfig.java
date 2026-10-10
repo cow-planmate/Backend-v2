@@ -22,6 +22,8 @@ public class CorsConfig {
         config.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
+        // 다른 도메인의 프론트가 조건부 요청(If-None-Match)에 쓸 ETag를 읽을 수 있게 노출(B_계층_상세.md §5-2)
+        config.setExposedHeaders(List.of("ETag"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
