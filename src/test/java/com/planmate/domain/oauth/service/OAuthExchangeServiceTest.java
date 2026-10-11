@@ -62,7 +62,7 @@ class OAuthExchangeServiceTest {
         User user = buildUser();
         given(oAuthLoginCodeRedisRepository.consume(CODE)).willReturn(Optional.of(USER_ID));
         given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
-        given(jwtTokenProvider.createAccessToken(USER_ID, "USER")).willReturn("access-token");
+        given(jwtTokenProvider.createAccessToken(USER_ID, "USER", false)).willReturn("access-token");
         given(jwtTokenProvider.createRefreshToken(USER_ID)).willReturn("refresh-token");
         given(jwtTokenProvider.getRefreshTokenExpiry()).willReturn(Duration.ofDays(7));
 
@@ -97,6 +97,6 @@ class OAuthExchangeServiceTest {
         assertThatThrownBy(() -> oAuthExchangeService.exchange(CODE))
                 .isInstanceOf(UserNotFoundException.class);
 
-        verify(jwtTokenProvider, never()).createAccessToken(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        verify(jwtTokenProvider, never()).createAccessToken(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 }

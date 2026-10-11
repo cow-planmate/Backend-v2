@@ -70,7 +70,7 @@ class OAuthCompleteServiceTest {
         given(userRepository.existsByProviderAndProviderId(UserProvider.KAKAO, "111")).willReturn(false);
         given(userRepository.existsByEmail("cached@example.com")).willReturn(false);
         given(userRepository.existsByNickname("홍길동")).willReturn(false);
-        given(jwtTokenProvider.createAccessToken(any(), org.mockito.ArgumentMatchers.eq("USER"))).willReturn("access-token");
+        given(jwtTokenProvider.createAccessToken(any(), org.mockito.ArgumentMatchers.eq("USER"), org.mockito.ArgumentMatchers.anyBoolean())).willReturn("access-token");
         given(jwtTokenProvider.createRefreshToken(any())).willReturn("refresh-token");
         given(jwtTokenProvider.getRefreshTokenExpiry()).willReturn(Duration.ofDays(7));
 
@@ -103,7 +103,7 @@ class OAuthCompleteServiceTest {
         given(userRepository.existsByProviderAndProviderId(UserProvider.GOOGLE, "111")).willReturn(false);
         given(userRepository.existsByEmail("cached@example.com")).willReturn(false);
         given(userRepository.existsByNickname("홍길동")).willReturn(false);
-        given(jwtTokenProvider.createAccessToken(any(), any())).willReturn("access-token");
+        given(jwtTokenProvider.createAccessToken(any(), any(), org.mockito.ArgumentMatchers.anyBoolean())).willReturn("access-token");
         given(jwtTokenProvider.createRefreshToken(any())).willReturn("refresh-token");
         given(jwtTokenProvider.getRefreshTokenExpiry()).willReturn(Duration.ofDays(7));
 
@@ -121,7 +121,7 @@ class OAuthCompleteServiceTest {
         given(userRepository.existsByProviderAndProviderId(UserProvider.KAKAO, "111")).willReturn(false);
         given(userRepository.existsByEmail("user-provided@example.com")).willReturn(false);
         given(userRepository.existsByNickname("홍길동")).willReturn(false);
-        given(jwtTokenProvider.createAccessToken(any(), any())).willReturn("access-token");
+        given(jwtTokenProvider.createAccessToken(any(), any(), org.mockito.ArgumentMatchers.anyBoolean())).willReturn("access-token");
         given(jwtTokenProvider.createRefreshToken(any())).willReturn("refresh-token");
         given(jwtTokenProvider.getRefreshTokenExpiry()).willReturn(Duration.ofDays(7));
 

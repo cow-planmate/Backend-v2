@@ -73,7 +73,8 @@ public class OAuthCompleteService {
         userOutboxWriter.publish(user);
         oAuthSignupRedisRepository.delete(request.signupId());
 
-        String accessToken = jwtTokenProvider.createAccessToken(user.getUserId(), user.getRole().name());
+        String accessToken = jwtTokenProvider.createAccessToken(
+                user.getUserId(), user.getRole().name(), user.isSuspended());
         String refreshToken = jwtTokenProvider.createRefreshToken(user.getUserId());
         refreshTokenRedisRepository.save(refreshToken, user.getUserId(), jwtTokenProvider.getRefreshTokenExpiry());
 

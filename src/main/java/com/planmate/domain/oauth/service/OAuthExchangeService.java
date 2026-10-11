@@ -31,7 +31,8 @@ public class OAuthExchangeService {
         User user = userRepository.findById(userId)
                 .orElseThrow(UserNotFoundException::new);
 
-        String accessToken = jwtTokenProvider.createAccessToken(user.getUserId(), user.getRole().name());
+        String accessToken = jwtTokenProvider.createAccessToken(
+                user.getUserId(), user.getRole().name(), user.isSuspended());
         String refreshToken = jwtTokenProvider.createRefreshToken(user.getUserId());
         refreshTokenRedisRepository.save(refreshToken, user.getUserId(), jwtTokenProvider.getRefreshTokenExpiry());
 
