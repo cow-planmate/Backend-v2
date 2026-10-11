@@ -99,36 +99,43 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("로그인 실패 - 실제 DB에 정지 상태로 저장된 계정은 비밀번호가 맞아도 403, AUTH_009")
-    void login_fail_accountSuspended() throws Exception {
+    @DisplayName("로그인 성공 - 실제 DB에 정지 상태로 저장된 계정도 200으로 로그인되고, 액세스 토큰에 suspended 클레임이 실린다")
+    void login_success_accountSuspended() throws Exception {
         testUser.suspend(java.time.LocalDateTime.now().plusDays(3), "약관 위반");
         userRepository.saveAndFlush(testUser);
         entityManager.clear();
 
         LoginRequest request = new LoginRequest(testUser.getEmail(), RAW_PASSWORD);
 
-        mockMvc.perform(post("/api/auth/login")
+        String responseBody = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("AUTH_009"));
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        issuedRefreshToken = objectMapper.readTree(responseBody).get("refreshToken").asText();
+        String accessToken = objectMapper.readTree(responseBody).get("accessToken").asText();
+        assertThat(jwtTokenProvider.isSuspended(accessToken)).isTrue();
     }
 
     @Test
-    @DisplayName("로그인 실패 - 영구 정지(until=null로 정지)는 sentinel이 실제 DB를 왕복해도 '영구 정지' 메시지로 나온다(만료일 대신)")
-    void login_fail_accountSuspended_permanent() throws Exception {
+    @DisplayName("로그인 성공 - 영구 정지(until=null) 계정도 로그인되고 suspended 클레임이 실린다(sentinel이 DB를 왕복해도 정지 판정이 유지됨)")
+    void login_success_accountSuspendedPermanently() throws Exception {
         testUser.suspend(null, "심각한 위반");
         userRepository.saveAndFlush(testUser);
         entityManager.clear();
 
         LoginRequest request = new LoginRequest(testUser.getEmail(), RAW_PASSWORD);
 
-        mockMvc.perform(post("/api/auth/login")
+        String responseBody = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("AUTH_009"))
-                .andExpect(jsonPath("$.message").value("영구 정지된 계정입니다. 사유: 심각한 위반"));
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        issuedRefreshToken = objectMapper.readTree(responseBody).get("refreshToken").asText();
+        String accessToken = objectMapper.readTree(responseBody).get("accessToken").asText();
+        assertThat(jwtTokenProvider.isSuspended(accessToken)).isTrue();
     }
 
     @Test
@@ -210,8 +217,8 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("Access Token 재발급 실패 - 로그인 이후 정지된 계정은 리프레시 토큰이 살아있어도 403, AUTH_009")
-    void reissue_fail_accountSuspended() throws Exception {
+    @DisplayName("Access Token 재발급 성공 - 로그인 이후 정지된 계정도 재발급은 되고, 새 토큰에 suspended 클레임이 실린다")
+    void reissue_success_accountSuspended() throws Exception {
         issuedRefreshToken = "test-refresh-token-" + UUID.randomUUID();
         refreshTokenRedisRepository.save(issuedRefreshToken, testUser.getUserId(), Duration.ofDays(1));
 
@@ -220,11 +227,14 @@ class AuthControllerTest {
         userRepository.saveAndFlush(testUser);
         entityManager.clear();
 
-        mockMvc.perform(post("/api/auth/token")
+        String responseBody = mockMvc.perform(post("/api/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RefreshTokenRequest(issuedRefreshToken))))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("AUTH_009"));
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        String newAccessToken = objectMapper.readTree(responseBody).get("accessToken").asText();
+        assertThat(jwtTokenProvider.isSuspended(newAccessToken)).isTrue();
     }
 
     @Test

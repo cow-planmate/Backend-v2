@@ -24,7 +24,6 @@ public enum ErrorCode {
     VERIFICATION_CODE_NOT_FOUND(HttpStatus.UNAUTHORIZED, "AUTH_006", "인증 요청을 찾을 수 없거나 만료되었습니다."),
     INVALID_VERIFICATION_CODE(HttpStatus.UNAUTHORIZED, "AUTH_007", "인증코드가 일치하지 않습니다."),
     PASSWORD_MISMATCH(HttpStatus.UNAUTHORIZED, "AUTH_008", "현재 비밀번호가 일치하지 않습니다."),
-    ACCOUNT_SUSPENDED(HttpStatus.FORBIDDEN, "AUTH_009", "정지된 계정입니다."),
 
     // 사용자
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자를 찾을 수 없습니다."),
