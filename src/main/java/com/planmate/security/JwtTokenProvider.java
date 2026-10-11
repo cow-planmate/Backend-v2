@@ -68,12 +68,25 @@ public class JwtTokenProvider implements AuthenticationTokenResolver {
         return builder.signWith(signingKeys.getPrivateKey());
     }
 
+    /** 정지 클레임을 싣지 않는다(= 정지 아님). 로그인·재발급·소셜 로그인은 정지 여부를 아는 3-인자 버전을 쓴다. */
     public String createAccessToken(UUID userId, String role) {
-        return createToken(userId, role, "access", accessTokenExpirySeconds);
+        return createAccessToken(userId, role, false);
+    }
+
+    /**
+     * 정지 여부를 "suspended" 클레임으로 싣는다. 게이트웨이가 이 클레임을 X-User-Suspended 헤더로 바꾸고,
+     * 커뮤니티·피드는 그 헤더로 글·댓글 작성만 막는다. 정지 중에도 로그인과 조회는 허용한다.
+     */
+    public String createAccessToken(UUID userId, String role, boolean suspended) {
+        return createToken(userId, role, "access", accessTokenExpirySeconds, suspended);
     }
 
     public String createRefreshToken(UUID userId) {
-        return createToken(userId, null, "refresh", refreshTokenExpirySeconds);
+        return createToken(userId, null, "refresh", refreshTokenExpirySeconds, false);
+    }
+
+    public boolean isSuspended(String token) {
+        return Boolean.TRUE.equals(parseClaims(token).get("suspended", Boolean.class));
     }
 
     public UUID extractUserId(String token) {
@@ -130,7 +143,7 @@ public class JwtTokenProvider implements AuthenticationTokenResolver {
         return extractUserId(token).toString();
     }
 
-    private String createToken(UUID userId, String role, String type, long expirySeconds) {
+    private String createToken(UUID userId, String role, String type, long expirySeconds, boolean suspended) {
         Instant now = Instant.now();
         var builder = Jwts.builder()
                 .subject(userId.toString())
@@ -139,6 +152,9 @@ public class JwtTokenProvider implements AuthenticationTokenResolver {
                 .expiration(Date.from(now.plusSeconds(expirySeconds)));
         if (role != null) {
             builder.claim("role", role);
+        }
+        if (suspended) {
+            builder.claim("suspended", true);
         }
         return withSigning(builder).compact();
     }

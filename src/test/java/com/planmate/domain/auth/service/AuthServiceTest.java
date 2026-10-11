@@ -1,6 +1,5 @@
 package com.planmate.domain.auth.service;
 
-import com.planmate.common.exception.domain.AccountSuspendedException;
 import com.planmate.common.exception.domain.InvalidCredentialsException;
 import com.planmate.common.exception.domain.InvalidTokenException;
 import com.planmate.common.exception.domain.UserNotFoundException;
@@ -74,7 +73,7 @@ class AuthServiceTest {
     void login_success() {
         given(userRepository.findLocalByEmail(EMAIL)).willReturn(Optional.of(user));
         given(passwordEncoder.matches(PASSWORD, user.getPassword())).willReturn(true);
-        given(jwtTokenProvider.createAccessToken(userId, "USER")).willReturn("access-token");
+        given(jwtTokenProvider.createAccessToken(userId, "USER", false)).willReturn("access-token");
         given(jwtTokenProvider.createRefreshToken(userId)).willReturn("refresh-token");
         given(jwtTokenProvider.getRefreshTokenExpiry()).willReturn(Duration.ofDays(7));
 
@@ -112,16 +111,20 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("로그인 실패 - 정지된 계정(비밀번호는 맞음) - AccountSuspendedException")
-    void login_fail_accountSuspended() {
+    @DisplayName("로그인 성공 - 정지된 계정도 로그인은 되고, 액세스 토큰에 정지 여부(suspended=true)를 싣는다")
+    void login_success_accountSuspended_issuesSuspendedAccessToken() {
         user.suspend(LocalDateTime.now().plusDays(3), "약관 위반");
         given(userRepository.findLocalByEmail(EMAIL)).willReturn(Optional.of(user));
         given(passwordEncoder.matches(PASSWORD, user.getPassword())).willReturn(true);
+        given(jwtTokenProvider.createAccessToken(userId, "USER", true)).willReturn("access-token");
+        given(jwtTokenProvider.createRefreshToken(userId)).willReturn("refresh-token");
+        given(jwtTokenProvider.getRefreshTokenExpiry()).willReturn(Duration.ofDays(7));
 
-        assertThatThrownBy(() -> authService.login(EMAIL, PASSWORD))
-                .isInstanceOf(AccountSuspendedException.class);
+        LoginResponse response = authService.login(EMAIL, PASSWORD);
 
-        verify(refreshTokenRedisRepository, never()).save(anyString(), eq(userId), org.mockito.ArgumentMatchers.any());
+        assertThat(response.accessToken()).isEqualTo("access-token");
+        verify(jwtTokenProvider).createAccessToken(userId, "USER", true);
+        verify(refreshTokenRedisRepository).save(eq("refresh-token"), eq(userId), eq(Duration.ofDays(7)));
     }
 
     @Test
@@ -157,7 +160,7 @@ class AuthServiceTest {
     void reissue_success() {
         given(refreshTokenRedisRepository.findUserId("refresh-token")).willReturn(Optional.of(userId));
         given(userRepository.findById(userId)).willReturn(Optional.of(user));
-        given(jwtTokenProvider.createAccessToken(userId, "USER")).willReturn("new-access-token");
+        given(jwtTokenProvider.createAccessToken(userId, "USER", false)).willReturn("new-access-token");
 
         RefreshTokenResponse response = authService.reissue("refresh-token");
 
@@ -184,13 +187,16 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("재발급 실패 - 로그인 후 정지된 계정(리프레시 토큰은 살아있어도 재발급은 막힘) - AccountSuspendedException")
-    void reissue_fail_accountSuspended() {
+    @DisplayName("재발급 성공 - 정지된 계정도 재발급은 되고, 새 액세스 토큰에 정지 여부(suspended=true)를 싣는다")
+    void reissue_success_accountSuspended_issuesSuspendedAccessToken() {
         user.suspend(LocalDateTime.now().plusDays(3), "약관 위반");
         given(refreshTokenRedisRepository.findUserId("refresh-token")).willReturn(Optional.of(userId));
         given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(jwtTokenProvider.createAccessToken(userId, "USER", true)).willReturn("new-access-token");
 
-        assertThatThrownBy(() -> authService.reissue("refresh-token"))
-                .isInstanceOf(AccountSuspendedException.class);
+        RefreshTokenResponse response = authService.reissue("refresh-token");
+
+        assertThat(response.accessToken()).isEqualTo("new-access-token");
+        verify(jwtTokenProvider).createAccessToken(userId, "USER", true);
     }
 }
