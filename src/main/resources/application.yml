@@ -124,6 +124,9 @@ internal:
   # 기본값을 두지 않는다. 이 토큰이 /api/internal/** 와 내부 gRPC 의 유일한 인증이라
   # 저장소에 적힌 기본값은 곧 공개된 비밀번호다. 미설정이면 InternalTokenGuard 가 기동을 막는다.
   api-token: ${INTERNAL_API_TOKEN:}
+  # planmate-ai 전용 — 지역 색인 gRPC(RegionIndexService)만 허용한다. 선택 설정: 비어 있으면
+  # v2 는 경고만 하고 뜨고, AI 는 지역 색인을 못 받아 채팅 지역명 검색만 실패한다(InternalTokenGuard).
+  ai-token: ${INTERNAL_AI_TOKEN:}
   outbox:
     # 소비자가 따라잡을 수 있는 최대 정지 시간이자, 탈퇴자의 옛 닉네임이 outbox에 남는 최대 기간.
     # 커서가 이 창 밖으로 밀려나면 서버가 전체 스냅샷으로 격하시켜 복구한다(유실 아님).

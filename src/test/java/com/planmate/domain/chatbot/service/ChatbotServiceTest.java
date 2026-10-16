@@ -9,6 +9,7 @@ import com.planmate.domain.chatbot.client.AiChatbotClient;
 import com.planmate.domain.chatbot.dto.ChatbotTurnRequest;
 import com.planmate.domain.chatbot.support.ChatbotBaselineStore;
 import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
+import com.planmate.domain.destination.cache.RegionIndexCache;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
 import com.planmate.domain.plan.dto.GetCompletePlanResponse;
 import com.planmate.domain.plan.dto.PlanFrameDetailDto;
@@ -54,6 +55,8 @@ class ChatbotServiceTest {
     private AiChatbotClient aiChatbotClient;
     @Mock
     private ChatbotBaselineStore chatbotBaselineStore;
+    @Mock
+    private RegionIndexCache regionIndexCache;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private ChatbotService chatbotService;
@@ -62,7 +65,7 @@ class ChatbotServiceTest {
     void setUp() {
         chatbotService = new ChatbotService(planService, destinationRegionCodeCache,
                 preferredThemeLclsSystmCache, userPreferredThemeRepository, aiChatbotClient, objectMapper,
-                chatbotBaselineStore);
+                chatbotBaselineStore, regionIndexCache);
     }
 
     // ---------- fixtures ----------
@@ -182,6 +185,20 @@ class ChatbotServiceTest {
         assertThat(uc.get("regionCodes")).hasSize(5);
         assertThat(uc.get("signguCodes")).hasSize(5);
         assertThat(uc.get("signguCodes").get(0).asText()).isEqualTo("110");
+    }
+
+    @Test
+    @DisplayName("userContext — 지역 색인 버전을 regionIndexVersion 으로 싣는다 (planmate-ai 가 색인 재조회 여부를 판단)")
+    void userContext_carriesRegionIndexVersion() {
+        stubPlan();
+        given(destinationRegionCodeCache.get(DESTINATION_ID)).willReturn(List.of(regionCode("26", null)));
+        given(userPreferredThemeRepository.findByUserUserId(USER_ID)).willReturn(List.of());
+        given(regionIndexCache.version()).willReturn("9f2c-version");
+        given(aiChatbotClient.call(any(), any())).willReturn(objectMapper.createObjectNode());
+
+        chatbotService.chat(PLAN_ID, USER_ID, request(null, null, null));
+
+        assertThat(capturedBody().get("userContext").get("regionIndexVersion").asText()).isEqualTo("9f2c-version");
     }
 
     @Test
