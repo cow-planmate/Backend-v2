@@ -1,6 +1,8 @@
 package com.planmate.domain.destination;
 
 import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
+import com.planmate.domain.destination.cache.RegionIndex;
+import com.planmate.domain.destination.cache.RegionIndexCache;
 import com.planmate.domain.destination.entity.Destination;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
 import com.planmate.domain.destination.repository.DestinationRepository;
@@ -40,6 +42,9 @@ class DestinationSeedIntegrityTest {
 
     @Autowired
     private DestinationRegionCodeCache destinationRegionCodeCache;
+
+    @Autowired
+    private RegionIndexCache regionIndexCache;
 
     @Test
     @DisplayName("노드 170개(시도 16 + 시군 154), 매핑 213행, 1차 노출 34개")
@@ -157,6 +162,64 @@ class DestinationSeedIntegrityTest {
                 WHERE destination_name = '강원' AND parent_id IS NULL
                 """);
         assertThat(inserted).isEqualTo(1);
+    }
+
+    // ---------- V17 별칭 (planmate-ai/project_ai/22 §5-1) ----------
+
+    @Test
+    @DisplayName("별칭 33행, 시도 노드 16개 모두 별칭이 1개 이상")
+    void aliases_countAndEverySidoCovered() {
+        assertThat(count("SELECT count(*) FROM destination_alias")).isEqualTo(33);
+        assertThat(count("""
+                SELECT count(*) FROM destination d
+                WHERE d.parent_id IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM destination_alias a WHERE a.destination_id = d.destination_id)
+                """)).isZero();
+    }
+
+    @Test
+    @DisplayName("별칭이 의도한 노드에 붙었다 — 전남 계열은 전남광주, 광주광역시는 광주(전남광주 하위), 고성은 두 곳")
+    void aliases_pointToIntendedNodes() {
+        assertThat(nodesOfAlias("전남")).containsExactly("전남광주");
+        assertThat(nodesOfAlias("전라남도")).containsExactly("전남광주");
+        assertThat(nodesOfAlias("전남광주통합특별시")).containsExactly("전남광주");
+        assertThat(nodesOfAlias("광주광역시")).containsExactly("광주");
+        assertThat(parentNameOf("광주")).isEqualTo("전남광주");
+        assertThat(nodesOfAlias("광주")).containsExactly("경기 광주");
+        assertThat(nodesOfAlias("고성")).containsExactlyInAnyOrder("강원 고성", "경남 고성");
+        assertThat(nodesOfAlias("제주특별자치도")).containsExactly("제주도");
+        assertThat(nodesOfAlias("제주")).containsExactly("제주도");
+        assertThat(nodesOfAlias("경상북도")).containsExactly("경북");
+    }
+
+    @Test
+    @DisplayName("지역 색인 — 실제 시드로 노드 170개, 별칭 포함, 버전 64자 hex")
+    void regionIndex_builtFromRealSeed() {
+        RegionIndex index = regionIndexCache.index();
+
+        assertThat(index.nodes()).hasSize(170);
+        assertThat(index.version()).matches("[0-9a-f]{64}");
+        RegionIndex.Node jeonnam = index.nodes().stream()
+                .filter(n -> n.parentId() == null && n.name().equals("전남광주"))
+                .findFirst().orElseThrow();
+        assertThat(jeonnam.aliases()).contains("전남", "전라남도");
+        assertThat(jeonnam.codes()).containsExactly(new RegionIndex.CodePair("12", null));
+    }
+
+    private List<String> nodesOfAlias(String alias) {
+        return jdbcTemplate.queryForList("""
+                SELECT d.destination_name FROM destination_alias a
+                JOIN destination d ON d.destination_id = a.destination_id
+                WHERE a.alias = ?
+                """, String.class, alias);
+    }
+
+    private String parentNameOf(String name) {
+        return jdbcTemplate.queryForObject("""
+                SELECT p.destination_name FROM destination d
+                JOIN destination p ON p.destination_id = d.parent_id
+                WHERE d.destination_name = ?
+                """, String.class, name);
     }
 
     private long count(String sql) {

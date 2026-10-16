@@ -9,7 +9,7 @@ version = '0.0.1-SNAPSHOT'
 def sharedSyncVersion = '5db644c'
 // buf.build/planmate/proto 의 모듈 커밋. **Backend-v2 / Community / Social / Notification
 // 네 서비스가 반드시 같은 값이어야 한다.** 알림 이벤트 계약이 넷 모두에 걸쳐 있다.
-def protoCommit = '20260814100725.145b6cc42659'
+def protoCommit = '20261016121932.25b4ebf280e6'
 // BSR 생성 SDK 버전은 <생성 플러그인 버전>.1.<모듈 커밋> 형태라 아티팩트마다 접두사가 다르다.
 // 값은 추측하지 말고 BSR 모듈의 Generated SDKs 탭에서 확인할 것.
 def protobufSdkVersion = "35.1.0.1.$protoCommit"
