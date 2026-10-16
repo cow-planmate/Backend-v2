@@ -75,6 +75,8 @@ public enum ErrorCode {
     CHATBOT_AI_MISCONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "CHATBOT_002", "AI 연동 설정 오류입니다."),
     // [반영] reconcile (④-2) — project_ai/04_기능/ai/07_반영_reconcile_설계.md §9-1
     CHATBOT_APPLY_SESSION_INVALID(HttpStatus.CONFLICT, "CHATBOT_003", "반영 세션이 유효하지 않습니다. 페이지를 새로고침한 뒤 다시 시도해주세요."),
+    // 저장본을 캐시에서 못 읽고 DB 로 폴백함 — 늦은 저장본으로 비교하면 블록이 복제되므로 반영하지 않는다(설계 §12-2)
+    CHATBOT_APPLY_SNAPSHOT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "CHATBOT_004", "일정의 최신 상태를 확인하지 못해 반영하지 않았어요. 잠시 후 다시 시도해주세요."),
     ;
 
     private final HttpStatus httpStatus;

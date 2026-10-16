@@ -3,6 +3,7 @@ package com.planmate.domain.chatbot.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.planmate.common.exception.domain.ChatbotApplySessionInvalidException;
+import com.planmate.common.exception.domain.ChatbotApplySnapshotUnavailableException;
 import com.planmate.domain.chatbot.dto.ChatbotApplyBlockDto;
 import com.planmate.domain.chatbot.dto.ChatbotApplyPlanDto;
 import com.planmate.domain.chatbot.dto.ChatbotApplyRequest;
@@ -131,7 +132,7 @@ class ChatbotApplyServiceTest {
     }
 
     private PlanSnapshot snapshot(List<TimetableDetailDto> timetables, List<TimetablePlaceBlockDetailDto> blocks) {
-        return new PlanSnapshot(frame(), timetables, blocks);
+        return new PlanSnapshot(frame(), timetables, blocks, PlanSnapshotReader.Source.CACHE);
     }
 
     private TimetableDetailDto savedTimetable(long id, LocalDate date) {
@@ -202,6 +203,38 @@ class ChatbotApplyServiceTest {
     void multipleSessions_picksOneAndProceeds() {
         stubSession("sess-1", "sess-2");
         stubPlan(snapshot(List.of(savedTimetable(1, DAY1)), List.of()));
+        given(chatbotBaselineStore.find(PLAN_ID, USER_ID)).willReturn(null);
+
+        ChatbotApplyResponse response =
+                service.apply(PLAN_ID, USER_ID, request(List.of(targetTimetable(1L, DAY1)), List.of()));
+
+        assertThat(response).isNotNull();
+    }
+
+    // ---------- 늦은 저장본 거부 (설계 §12-2) ----------
+
+    @Test
+    @DisplayName("저장본이 캐시 실패 후 DB 폴백본 → ChatbotApplySnapshotUnavailableException, 아무것도 적용 안 함")
+    void cacheFailedSnapshot_throwsAndAppliesNothing() {
+        stubSession("sess-1");
+        // 직전 [반영] 블록이 아직 DB 에 없는 상황 — 이대로 reconcile 하면 blockId 11 을 새로 만든다.
+        stubPlan(new PlanSnapshot(frame(), List.of(savedTimetable(1, DAY1)), List.of(),
+                PlanSnapshotReader.Source.CACHE_FAILED_DATABASE));
+
+        assertThatThrownBy(() -> service.apply(PLAN_ID, USER_ID,
+                request(List.of(targetTimetable(1L, DAY1)), List.of(targetBlock(11L, 1L, DAY1, "경복궁")))))
+                .isInstanceOf(ChatbotApplySnapshotUnavailableException.class);
+
+        verifyNoInteractions(chatbotBaselineStore, historyService, redisSyncService, sharedTimeTableService,
+                sharedTimeTablePlaceBlockService, timeTableCache, timeTablePlaceBlockCache);
+    }
+
+    @Test
+    @DisplayName("캐시에 플랜이 없어 DB 에서 읽은 저장본은 최신이라 정상 처리한다")
+    void databaseSnapshot_proceeds() {
+        stubSession("sess-1");
+        stubPlan(new PlanSnapshot(frame(), List.of(savedTimetable(1, DAY1)), List.of(),
+                PlanSnapshotReader.Source.DATABASE));
         given(chatbotBaselineStore.find(PLAN_ID, USER_ID)).willReturn(null);
 
         ChatbotApplyResponse response =
