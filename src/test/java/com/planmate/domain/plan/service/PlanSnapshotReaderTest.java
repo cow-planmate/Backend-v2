@@ -68,6 +68,7 @@ class PlanSnapshotReaderTest {
         assertThat(snapshot.planFrame().planName()).isEqualTo("서울 여행");
         assertThat(snapshot.timetables()).hasSize(1);
         assertThat(snapshot.placeBlocks()).extracting("placeName").containsExactly("경복궁");
+        assertThat(snapshot.source()).isEqualTo(PlanSnapshotReader.Source.DATABASE);
         verifyNoInteractions(timeTableCache, timeTablePlaceBlockCache);
     }
 
@@ -88,6 +89,7 @@ class PlanSnapshotReaderTest {
         assertThat(snapshot.planFrame().planName()).isEqualTo("수정된 서울 여행");
         assertThat(snapshot.placeBlocks()).extracting("placeName").containsExactly("수정된 장소");
         assertThat(snapshot.placeBlocks()).extracting("timeTableId").containsExactly(1L);
+        assertThat(snapshot.source()).isEqualTo(PlanSnapshotReader.Source.CACHE);
         verifyNoInteractions(timeTableRepository, timeTablePlaceBlockRepository);
     }
 
@@ -118,6 +120,8 @@ class PlanSnapshotReaderTest {
         PlanSnapshotReader.PlanSnapshot snapshot = planSnapshotReader.read(plan);
 
         assertThat(snapshot.timetables()).hasSize(1);
+        // 폴백본은 늦을 수 있다 — [반영]이 이 값을 보고 반영을 거부한다(07 §12-2).
+        assertThat(snapshot.source()).isEqualTo(PlanSnapshotReader.Source.CACHE_FAILED_DATABASE);
     }
 
     @Test

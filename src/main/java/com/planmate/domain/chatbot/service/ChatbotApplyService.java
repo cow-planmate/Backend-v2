@@ -2,6 +2,7 @@ package com.planmate.domain.chatbot.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.planmate.common.exception.domain.ChatbotApplySessionInvalidException;
+import com.planmate.common.exception.domain.ChatbotApplySnapshotUnavailableException;
 import com.planmate.common.exception.domain.PlanNotFoundException;
 import com.planmate.domain.chatbot.dto.ChatbotApplyBlockDto;
 import com.planmate.domain.chatbot.dto.ChatbotApplyPlanDto;
@@ -117,6 +118,11 @@ public class ChatbotApplyService {
         // 2. 저장본
         Plan plan = planRepository.findById(planId).orElseThrow(PlanNotFoundException::new);
         PlanSnapshot saved = planSnapshotReader.read(plan);
+        if (saved.source() == PlanSnapshotReader.Source.CACHE_FAILED_DATABASE) {
+            // 폴백본(DB)은 주기 동기화만큼 늦을 수 있다 — 그걸로 reconcile 하면 직전 [반영] 블록을 못 찾아
+            // 전부 새로 만든다(설계 §12-2). 블록 규칙(§5-2)은 그대로 두고, 늦은 저장본이면 반영 자체를 멈춘다.
+            throw new ChatbotApplySnapshotUnavailableException();
+        }
 
         boolean conflictDetected = detectConflict(planId, userId, saved);
 
