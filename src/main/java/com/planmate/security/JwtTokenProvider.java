@@ -120,9 +120,23 @@ public class JwtTokenProvider implements AuthenticationTokenResolver {
         }
     }
 
+    /**
+     * SharedSync 핸드셰이크가 부르는 유일한 검증 지점이다. 서명·만료뿐 아니라 <b>토큰 종류까지</b>
+     * 본다.
+     *
+     * <p>{@link #validateToken}만 부르면 refresh 토큰도 통과한다 — 서명은 같은 키로 했고 만료도
+     * 안 됐기 때문이다. HTTP 쪽은 필터마다 {@code validateToken && isAccessToken} 을 함께 보는데
+     * WebSocket 만 그 검사가 빠져 있었다. 그러면 15분짜리 access 토큰 대신 <b>7일짜리 refresh
+     * 토큰으로 협업편집 세션을 열 수 있고</b>, 로그아웃해도(refresh 키 삭제) SharedSync 는 Redis 를
+     * 보지 않으므로 막히지 않는다.
+     *
+     * <p>웹·앱 모두 이미 access 토큰을 싣고 있다(frontend {@code client.jsx} 의
+     * {@code localStorage.getItem('accessToken')}, Mobile 의 {@code ensureFreshAccessToken()}).
+     * 그래서 이 조임은 정상 클라이언트에 영향이 없다.
+     */
     @Override
     public boolean validate(String token) {
-        return validateToken(token);
+        return validateToken(token) && isAccessToken(token);
     }
 
     @Override
