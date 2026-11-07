@@ -220,6 +220,46 @@ class InternalUserGrpcServiceTest {
     }
 
     @Test
+    @DisplayName("보낼 것을 다 보내면 '따라잡음' 마커로 구간을 마감한다")
+    void watchUserChanges_sendsCatchUpMarkerAfterDrainingTail() throws Exception {
+        UUID userId = UUID.randomUUID();
+        given(outboxRepository.oldestRetainedSeq()).willReturn(1L);
+        given(outboxRepository.findAfter(eq(7L), anyInt()))
+                .willReturn(List.of(new UserOutboxEntry(8L, userId, "바뀐닉", null, "hash", true, false)));
+        given(outboxRepository.findAfter(eq(8L), anyInt())).willReturn(List.of());
+
+        LinkedBlockingQueue<WatchUserChangesResponse> received = subscribe(
+                WatchUserChangesRequest.newBuilder().setFromSequence(7L).build());
+
+        assertThat(received.poll(2, TimeUnit.SECONDS)).isNotNull();
+
+        // 소비자는 트랜잭션 수를 줄이려고 이벤트를 모았다가 반영한다. TAIL 에 한 번에 200건이
+        // 몰려 오는 일은 없으므로, 마감 신호가 없으면 그 한 건이 버퍼에 갇힌 채 영영 반영되지
+        // 않는다 — 실제로 Social 의 복제본이 이 방식으로 8일간 멈춰 있었다.
+        WatchUserChangesResponse marker = received.poll(2, TimeUnit.SECONDS);
+        assertThat(marker).isNotNull();
+        assertThat(marker.hasUser()).isFalse();
+        assertThat(marker.getSnapshotComplete()).isFalse();
+        assertThat(marker.getSequence()).isEqualTo(8L);
+        // userId 가 비어 있는 것이 "구버전 서버의 값 없는 알림"과 구분되는 지점이다.
+        assertThat(marker.getUserId()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("보낼 게 없는 유휴 상태에서는 마커를 반복해서 보내지 않는다")
+    void watchUserChanges_doesNotEmitMarkerWhileIdle() throws Exception {
+        given(outboxRepository.oldestRetainedSeq()).willReturn(1L);
+        given(outboxRepository.findAfter(eq(7L), anyInt())).willReturn(List.of());
+
+        LinkedBlockingQueue<WatchUserChangesResponse> received = subscribe(
+                WatchUserChangesRequest.newBuilder().setFromSequence(7L).build());
+
+        // 폴러는 50ms 마다 돈다. 마커를 무조건 보냈다면 그 주기마다 빈 메시지가 쌓인다.
+        verify(outboxRepository, timeout(2000).atLeastOnce()).findAfter(eq(7L), anyInt());
+        assertThat(received).isEmpty();
+    }
+
+    @Test
     @DisplayName("커서를 보내지 않는 구버전 소비자에게는 재생 없이 지금부터만 전달된다")
     void watchUserChanges_legacyConsumerTailsFromNow() throws Exception {
         given(outboxRepository.currentMaxSeq()).willReturn(42L);

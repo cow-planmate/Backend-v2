@@ -39,6 +39,8 @@ public class UserChangeStreamSession {
     private UUID snapshotAfterUserId = FIRST_USER_ID;
     /** SNAPSHOT 단계가 끝나면 넘어갈 outbox 커서. 스냅샷을 읽기 <b>전</b>에 확보한 값이다. */
     private long snapshotSeq;
+    /** TAIL 로 뭔가 보냈고 아직 "따라잡음" 마커로 마감하지 않았다. {@link #sendCaughtUp()} 참고. */
+    private boolean catchUpPending;
 
     public UserChangeStreamSession(ServerCallStreamObserver<WatchUserChangesResponse> observer) {
         this.observer = observer;
@@ -48,6 +50,7 @@ public class UserChangeStreamSession {
     public void startTail(long fromSequence) {
         this.phase = Phase.TAIL;
         this.cursor = fromSequence;
+        this.catchUpPending = false;
     }
 
     /**
@@ -99,6 +102,38 @@ public class UserChangeStreamSession {
         }
         observer.onNext(message);
         this.cursor = seq;
+        this.catchUpPending = true;
+        return true;
+    }
+
+    /**
+     * "여기까지가 이번 구간의 끝"이라는 마커. 값 없이 커서만 실어 보낸다.
+     *
+     * <p><b>없으면 소비자의 읽기 모델이 갱신되지 않는다.</b> 소비자는 트랜잭션 수를 줄이려고
+     * 이벤트를 200건씩 모아 반영하는데, TAIL 은 그만큼 몰려 오는 일이 거의 없다. 닉네임 하나가
+     * 바뀌면 그 이벤트 한 건이 소비자 버퍼에 앉은 채로 199건을 기다리게 되고, 재연결해도
+     * 커서가 그 앞에 있으니 같은 구간을 다시 받아 다시 갇힌다. 실제로 Social 의 복제본이
+     * 이 방식으로 8일간 16건 밀린 채 멈춰 있었다.
+     *
+     * <p>그래서 보낼 것을 다 보낸 시점에 이 마커를 한 번 보내고, 소비자는 이걸 받으면 버퍼를
+     * 비운다. 커서는 건드리지 않으므로(이미 마지막 전송에서 전진했다) 재개 의미론은 그대로다.
+     *
+     * <p>보낼 게 없었던 틱에는 보내지 않는다 — 유휴 상태에서 폴링 주기마다 빈 메시지가 나가면
+     * 안 된다. 흐름 제어로 중간에 끊겨도 플래그가 남아 다음 틱에 마감된다.
+     *
+     * <p>구버전 소비자는 값이 없는 응답을 그냥 건너뛰므로 이 메시지를 받아도 무해하다.
+     *
+     * @return 계속 보낼 수 있으면 true
+     */
+    public boolean sendCaughtUp() {
+        if (!catchUpPending) {
+            return true;
+        }
+        if (!isActive() || !observer.isReady()) {
+            return false;
+        }
+        observer.onNext(WatchUserChangesResponse.newBuilder().setSequence(cursor).build());
+        this.catchUpPending = false;
         return true;
     }
 
