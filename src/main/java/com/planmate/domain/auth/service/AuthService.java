@@ -1,6 +1,5 @@
 package com.planmate.domain.auth.service;
 
-import com.planmate.common.exception.domain.AccountSuspendedException;
 import com.planmate.common.exception.domain.InvalidCredentialsException;
 import com.planmate.common.exception.domain.InvalidTokenException;
 import com.planmate.common.exception.domain.UserNotFoundException;
@@ -40,13 +39,10 @@ public class AuthService {
         if (user == null || !matches) {
             throw new InvalidCredentialsException();
         }
-        // 비밀번호 검증 뒤에 둔다 — 틀린 비밀번호로도 "정지된 계정"이 드러나면 계정 상태가
-        // 크리덴셜 없이도 열람 가능한 정보가 된다(오라클 공격 방지).
-        if (user.isSuspended()) {
-            throw new AccountSuspendedException(user.getSuspendedUntil(), user.getSuspendReason());
-        }
 
-        String accessToken = jwtTokenProvider.createAccessToken(user.getUserId(), user.getRole().name());
+        // 정지 회원도 로그인은 된다. 정지는 토큰의 suspended 클레임으로 전달되어 글·댓글 작성만 막는다.
+        String accessToken = jwtTokenProvider.createAccessToken(
+                user.getUserId(), user.getRole().name(), user.isSuspended());
         String refreshToken = jwtTokenProvider.createRefreshToken(user.getUserId());
         refreshTokenRedisRepository.save(refreshToken, user.getUserId(), jwtTokenProvider.getRefreshTokenExpiry());
 
@@ -72,11 +68,9 @@ public class AuthService {
                 .orElseThrow(InvalidTokenException::new);
         User user = userRepository.findById(userId)
                 .orElseThrow(UserNotFoundException::new);
-        if (user.isSuspended()) {
-            throw new AccountSuspendedException(user.getSuspendedUntil(), user.getSuspendReason());
-        }
 
-        String accessToken = jwtTokenProvider.createAccessToken(user.getUserId(), user.getRole().name());
+        String accessToken = jwtTokenProvider.createAccessToken(
+                user.getUserId(), user.getRole().name(), user.isSuspended());
         return new RefreshTokenResponse(accessToken);
     }
 }
