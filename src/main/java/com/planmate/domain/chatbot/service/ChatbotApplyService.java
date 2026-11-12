@@ -29,6 +29,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.messaging.simp.user.SimpUserRegistry;
+import org.springframework.messaging.simp.SimpAttributes;
+import org.springframework.messaging.simp.SimpAttributesContextHolder;
 import sharedsync.cache.TimeTableCache;
 import sharedsync.cache.TimeTablePlaceBlockCache;
 import sharedsync.dto.TimeTableDto;
@@ -47,6 +51,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 챗봇 [반영](④-2) — 프론트 working copy 를 저장본과 id 로 reconcile 해 SharedSync 에 반영한다.
@@ -66,6 +71,7 @@ import java.util.UUID;
 public class ChatbotApplyService {
 
     private final WebSocketSessionRegistry webSocketSessionRegistry;
+    private final ObjectProvider<SimpUserRegistry> stompUserRegistries;
     private final PlanRepository planRepository;
     private final PlanSnapshotReader planSnapshotReader;
     private final PlaceDetailRepository placeDetailRepository;
@@ -83,18 +89,22 @@ public class ChatbotApplyService {
     public ChatbotApplyResponse apply(UUID planId, UUID userId, ChatbotApplyRequest request) {
         String sessionId = findLiveSession(planId, userId);
 
+        SimpAttributes previousAttributes = SimpAttributesContextHolder.getAttributes();
         WebSocketSyncSessionContext.bind(sessionId);
+        SimpAttributesContextHolder.setAttributes(new SimpAttributes(sessionId, new ConcurrentHashMap<>()));
         try {
             return doApply(planId, userId, request);
         } finally {
             WebSocketSyncSessionContext.clear();
+            if (previousAttributes == null) SimpAttributesContextHolder.resetAttributes();
+            else SimpAttributesContextHolder.setAttributes(previousAttributes);
         }
     }
 
     // ---------- 0-② 세션 조회 (설계 §9-1) ----------
 
     /**
-     * 이 유저가 이 방에 지금 열어둔 raw-WS 세션을 신원 기준으로 찾는다 — 클라가 자기 sessionId를
+     * 이 유저가 이 방에 지금 열어둔 raw-WS 또는 STOMP 세션을 신원 기준으로 찾는다 — 클라가 자기 sessionId를
      * 몰라서(wire 프로토콜에 그걸 알려주는 수단이 없음) 안 보내므로, v2가 직접 조회한다.
      *
      * <p>같은 유저가 같은 방을 여러 세션(탭/기기)으로 열어두면 여러 개가 나올 수 있다 — 그중
@@ -102,10 +112,23 @@ public class ChatbotApplyService {
      */
     private String findLiveSession(UUID planId, UUID userId) {
         Set<String> sessionIds = webSocketSessionRegistry.sessionIdsOf(planId.toString(), userId.toString());
-        if (sessionIds.isEmpty()) {
-            throw new ChatbotApplySessionInvalidException();
+        if (!sessionIds.isEmpty()) return sessionIds.iterator().next();
+
+        // STOMP sessions are not registered in the raw-WebSocket registry.
+        // Match the authenticated principal and an exact edit-room subscription.
+        SimpUserRegistry registry = stompUserRegistries.getIfAvailable();
+        if (registry != null) {
+            String topic = "/topic/" + planId;
+            for (var user : registry.getUsers()) {
+                if (!userId.toString().equals(user.getName()) && !("u:" + userId).equals(user.getName())) continue;
+                for (var session : user.getSessions()) {
+                    if (session.getSubscriptions().stream().anyMatch(subscription -> topic.equals(subscription.getDestination()))) {
+                        return session.getId();
+                    }
+                }
+            }
         }
-        return sessionIds.iterator().next();
+        throw new ChatbotApplySessionInvalidException();
     }
 
     private ChatbotApplyResponse doApply(UUID planId, UUID userId, ChatbotApplyRequest request) {

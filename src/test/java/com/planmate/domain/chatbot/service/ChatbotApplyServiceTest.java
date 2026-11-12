@@ -25,6 +25,11 @@ import com.sharedsync.shared.history.HistoryService;
 import com.sharedsync.shared.sync.RedisSyncService;
 import com.sharedsync.shared.transport.WebSocketSessionRegistry;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.messaging.simp.user.SimpUserRegistry;
+import org.springframework.messaging.simp.user.SimpUser;
+import org.springframework.messaging.simp.user.SimpSession;
+import org.springframework.messaging.simp.user.SimpSubscription;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -87,6 +92,8 @@ class ChatbotApplyServiceTest {
     @Mock
     private WebSocketSessionRegistry webSocketSessionRegistry;
     @Mock
+    private ObjectProvider<SimpUserRegistry> stompUserRegistries;
+    @Mock
     private PlanRepository planRepository;
     @Mock
     private PlanSnapshotReader planSnapshotReader;
@@ -114,7 +121,7 @@ class ChatbotApplyServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ChatbotApplyService(webSocketSessionRegistry, planRepository, planSnapshotReader,
+        service = new ChatbotApplyService(webSocketSessionRegistry, stompUserRegistries, planRepository, planSnapshotReader,
                 placeDetailRepository, planReconciler, sharedTimeTableService, sharedTimeTablePlaceBlockService,
                 timeTableCache, timeTablePlaceBlockCache, historyService, redisSyncService, chatbotBaselineStore,
                 objectMapper);
@@ -208,6 +215,55 @@ class ChatbotApplyServiceTest {
                 service.apply(PLAN_ID, USER_ID, request(List.of(targetTimetable(1L, DAY1)), List.of()));
 
         assertThat(response).isNotNull();
+    }
+
+    private void stubStompSession(String principal, String destination) {
+        SimpUserRegistry registry = org.mockito.Mockito.mock(SimpUserRegistry.class);
+        SimpUser user = org.mockito.Mockito.mock(SimpUser.class);
+        SimpSession session = org.mockito.Mockito.mock(SimpSession.class);
+        SimpSubscription subscription = org.mockito.Mockito.mock(SimpSubscription.class);
+        given(stompUserRegistries.getIfAvailable()).willReturn(registry);
+        given(registry.getUsers()).willReturn(Set.of(user));
+        given(user.getName()).willReturn(principal);
+        if (principal.equals("u:" + USER_ID) || principal.equals(USER_ID.toString())) {
+            given(user.getSessions()).willReturn(Set.of(session));
+            given(session.getSubscriptions()).willReturn(Set.of(subscription));
+            given(subscription.getDestination()).willReturn(destination);
+            if (destination.equals("/topic/" + PLAN_ID)) given(session.getId()).willReturn("stomp-session");
+        }
+    }
+
+    @Test
+    void stompSession_appliesAndBindsUndoToAuthenticatedSession() {
+        stubSession();
+        stubStompSession("u:" + USER_ID, "/topic/" + PLAN_ID);
+        stubPlan(snapshot(List.of(savedTimetable(1, DAY1)), List.of()));
+        given(chatbotBaselineStore.find(PLAN_ID, USER_ID)).willAnswer(invocation -> {
+            assertThat(new com.sharedsync.shared.transport.WebSocketSyncSessionContext().currentSessionId()).isEqualTo("stomp-session");
+            assertThat(org.springframework.messaging.simp.SimpAttributesContextHolder.currentAttributes().getSessionId()).isEqualTo("stomp-session");
+            return null;
+        });
+        service.apply(PLAN_ID, USER_ID, request(List.of(targetTimetable(1L, DAY1)), List.of()));
+        assertThat(org.springframework.messaging.simp.SimpAttributesContextHolder.getAttributes()).isNull();
+        assertThat(new com.sharedsync.shared.transport.WebSocketSyncSessionContext().currentSessionId()).isNull();
+    }
+
+    @Test
+    void stompSession_ofAnotherUserIsRejected() {
+        stubSession();
+        stubStompSession("u:" + UUID.randomUUID(), "/topic/" + PLAN_ID);
+        assertThatThrownBy(() -> service.apply(PLAN_ID, USER_ID, request(List.of(), List.of())))
+                .isInstanceOf(ChatbotApplySessionInvalidException.class);
+        verifyNoInteractions(planRepository, historyService);
+    }
+
+    @Test
+    void stompSession_ofAnotherPlanIsRejected() {
+        stubSession();
+        stubStompSession("u:" + USER_ID, "/topic/" + UUID.randomUUID());
+        assertThatThrownBy(() -> service.apply(PLAN_ID, USER_ID, request(List.of(), List.of())))
+                .isInstanceOf(ChatbotApplySessionInvalidException.class);
+        verifyNoInteractions(planRepository, historyService);
     }
 
     // ---------- 충돌 감지 (설계 §10-1-1) ----------
