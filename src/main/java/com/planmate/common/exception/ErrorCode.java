@@ -74,7 +74,7 @@ public enum ErrorCode {
     CHATBOT_AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "CHATBOT_001", "AI 서버가 일시적으로 응답하지 못했어요. 잠시 후 다시 시도해주세요."),
     CHATBOT_AI_MISCONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "CHATBOT_002", "AI 연동 설정 오류입니다."),
     // [반영] reconcile (④-2) — project_ai/04_기능/ai/07_반영_reconcile_설계.md §9-1
-    CHATBOT_APPLY_SESSION_INVALID(HttpStatus.CONFLICT, "CHATBOT_003", "반영 세션이 유효하지 않습니다. 페이지를 새로고침한 뒤 다시 시도해주세요."),
+    CHATBOT_APPLY_SESSION_INVALID(HttpStatus.CONFLICT, "CHATBOT_003", "실시간 편집 연결을 확인할 수 없습니다. 연결이 복구된 뒤 다시 시도해주세요."),
     ;
 
     private final HttpStatus httpStatus;
