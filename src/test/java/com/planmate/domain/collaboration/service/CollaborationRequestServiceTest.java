@@ -69,6 +69,18 @@ class CollaborationRequestServiceTest {
     @InjectMocks
     private CollaborationRequestService collaborationRequestService;
 
+    @Test
+    void returnsAuthoritativeStatusesForVisibleRequests() {
+        var request = requestStub(1L, CollaborationRequestType.INVITE, CollaborationRequestStatus.ACCEPTED,
+                sender(), receiver(), planStub(owner()));
+        given(collaborationRequestRepository.findVisibleStatuses(RECEIVER_ID, List.of(1L)))
+                .willReturn(List.of(request));
+        var result = collaborationRequestService.getStatuses(RECEIVER_ID, List.of(1L));
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).status()).isEqualTo(CollaborationRequestStatus.ACCEPTED);
+        assertThat(result.get(0).planId()).isEqualTo(PLAN_ID);
+    }
+
     private User sender() {
         return User.builder().userId(SENDER_ID).nickname("sender").build();
     }

@@ -7,6 +7,7 @@ import com.planmate.common.exception.domain.CollaborationRequestNotFoundExceptio
 import com.planmate.common.exception.domain.PlanNotFoundException;
 import com.planmate.common.exception.domain.UserNotFoundException;
 import com.planmate.domain.collaboration.dto.AcceptRequestResponse;
+import com.planmate.domain.collaboration.dto.CollaborationRequestStatusDto;
 import com.planmate.domain.collaboration.dto.GetReceivedPendingRequestsResponse;
 import com.planmate.domain.collaboration.dto.InviteUserToPlanResponse;
 import com.planmate.domain.collaboration.dto.PendingRequestDto;
@@ -132,6 +133,15 @@ public class CollaborationRequestService {
                 plan.getPlanId(), plan.getPlanName(), saved.getCollaborationRequestId(), false);
 
         return new RequestEditAccessResponse(saved.getCollaborationRequestId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<CollaborationRequestStatusDto> getStatuses(UUID userId, List<Long> ids) {
+        if (ids.isEmpty()) return List.of();
+        return collaborationRequestRepository.findVisibleStatuses(userId, ids).stream()
+                .map(request -> new CollaborationRequestStatusDto(request.getCollaborationRequestId(),
+                        request.getStatus(), request.getType(), request.getPlan().getPlanId()))
+                .toList();
     }
 
     @Transactional(readOnly = true)
