@@ -552,6 +552,36 @@ class CollaborationRequestControllerTest {
         return plan;
     }
 
+    @Test
+    void requestStatusesAreVisibleOnlyToSenderAndReceiver() throws Exception {
+        User receiver = createOtherUser();
+        Plan plan = createTestPlan(owner);
+        var request = collaborationRequestRepository.saveAndFlush(CollaborationRequest.builder()
+                .sender(owner).receiver(receiver).plan(plan).type(CollaborationRequestType.INVITE)
+                .status(CollaborationRequestStatus.REJECTED).build());
+        String path = "/api/collaboration-requests/statuses?ids=" + request.getCollaborationRequestId();
+        mockMvc.perform(get(path).header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].status").value("REJECTED"));
+        mockMvc.perform(get(path).header("Authorization", "Bearer " + jwtTokenProvider.createAccessToken(receiver.getUserId(), receiver.getRole().name())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].type").value("INVITE"));
+        User stranger = createOtherUser();
+        mockMvc.perform(get(path).header("Authorization", "Bearer " + jwtTokenProvider.createAccessToken(stranger.getUserId(), stranger.getRole().name())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mockMvc.perform(get("/api/collaboration-requests/statuses?ids=-1").header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isBadRequest());
+        collaborationRequestRepository.saveAndFlush(CollaborationRequest.builder()
+                .sender(owner).receiver(receiver).plan(plan).type(CollaborationRequestType.INVITE)
+                .status(CollaborationRequestStatus.PENDING).build());
+        plan.softDelete();
+        planRepository.saveAndFlush(plan);
+        entityManager.clear();
+        mockMvc.perform(get("/api/collaboration-requests/pending")
+                        .header("Authorization", "Bearer " + jwtTokenProvider.createAccessToken(receiver.getUserId(), receiver.getRole().name())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.requests.length()").value(0));
+        mockMvc.perform(get(path).header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+    }
+
     private User createOtherUser() {
         return userRepository.saveAndFlush(User.builder()
                 .provider(UserProvider.LOCAL)
