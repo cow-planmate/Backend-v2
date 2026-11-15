@@ -9,6 +9,7 @@ import com.planmate.domain.chatbot.dto.PreferredThemeDto;
 import com.planmate.domain.chatbot.dto.RegionCodeDto;
 import com.planmate.domain.chatbot.dto.UserContextDto;
 import com.planmate.domain.destination.cache.DestinationRegionCodeCache;
+import com.planmate.domain.destination.cache.RegionIndexCache;
 import com.planmate.domain.destination.entity.DestinationRegionCode;
 import com.planmate.domain.chatbot.support.ChatbotBaselineStore;
 import com.planmate.domain.chatbot.support.PlanContentFingerprint;
@@ -48,6 +49,7 @@ public class ChatbotService {
     private final AiChatbotClient aiChatbotClient;
     private final ObjectMapper objectMapper;
     private final ChatbotBaselineStore chatbotBaselineStore;
+    private final RegionIndexCache regionIndexCache;
 
     @PreAuthorize("@planAccessValidator.validateMember(#planId, authentication.principal)")
     public JsonNode chat(UUID planId, UUID userId, ChatbotTurnRequest request) {
@@ -96,6 +98,6 @@ public class ChatbotService {
                 .distinct()
                 .toList();
 
-        return new UserContextDto(preferredThemes, regionCodes, signguCodes);
+        return new UserContextDto(preferredThemes, regionCodes, signguCodes, regionIndexCache.version());
     }
 }

@@ -12,6 +12,7 @@ import com.sharedsync.shared.storage.PresenceStorage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import sharedsync.cache.PlanCache;
 import sharedsync.cache.TimeTableCache;
 import sharedsync.cache.TimeTablePlaceBlockCache;
@@ -33,6 +34,11 @@ import java.util.UUID;
  *
  * <p>캐시에 해당 Plan이 살아 있으면 캐시가 최신이므로 캐시를 우선 읽고,
  * 동기화가 끝나 캐시가 비워졌으면 DB로 폴백한다.
+ *
+ * <p>캐시에서 복원한 엔티티의 연관(예: Plan의 Destination)은 {@code em.getReference()} 프록시다.
+ * 트랜잭션 밖(open-in-view 꺼짐)에서 읽으면 프록시를 채울 세션이 없어 {@code LazyInitializationException}
+ * 으로 매번 DB 폴백한다 — 그래서 호출자가 트랜잭션을 열지 않아도 되도록 {@link #read}가 읽기 전용
+ * 트랜잭션을 연다(07_반영_reconcile_설계.md §12-2).
  */
 @Component
 @RequiredArgsConstructor
@@ -48,17 +54,30 @@ public class PlanSnapshotReader {
 
     /**
      * 조회 시점의 Plan 전체 상태.
+     *
+     * @param source 어디서 읽었는지. 내용 비교(지문)에는 쓰지 않는다.
      */
     public record PlanSnapshot(
             PlanFrameDetailDto planFrame,
             List<TimetableDetailDto> timetables,
-            List<TimetablePlaceBlockDetailDto> placeBlocks
+            List<TimetablePlaceBlockDetailDto> placeBlocks,
+            Source source
     ) {
+    }
+
+    public enum Source {
+        /** 캐시에서 읽음 — 최신. */
+        CACHE,
+        /** 캐시에 플랜이 없어 DB에서 읽음 — 동기화가 끝난 상태라 DB가 최신. */
+        DATABASE,
+        /** 캐시에 플랜이 있는데 읽다 실패해 DB로 폴백 — DB가 주기 동기화만큼 늦을 수 있다. */
+        CACHE_FAILED_DATABASE
     }
 
     /**
      * @param plan 접근 검증에 사용한 DB Plan 엔티티. 캐시 미스이거나 캐시가 불완전할 때의 폴백으로도 쓴다.
      */
+    @Transactional(readOnly = true)
     public PlanSnapshot read(Plan plan) {
         UUID planId = plan.getPlanId();
 
@@ -67,15 +86,16 @@ public class PlanSnapshotReader {
 
         Plan cachedPlan = planCache.findById(planId).orElse(null);
         if (cachedPlan == null) {
-            return readFromDatabase(plan);
+            return readFromDatabase(plan, Source.DATABASE);
         }
 
         try {
             return readFromCache(plan, cachedPlan, planId);
         } catch (Exception e) {
-            // 캐시 구조가 깨졌더라도 조회 자체는 실패하지 않도록 DB로 폴백한다.
-            log.warn("[PlanSnapshot] 캐시 조회 실패로 DB 폴백. planId={}", planId, e);
-            return readFromDatabase(plan);
+            // 캐시 구조가 깨졌더라도 조회 자체는 실패하지 않도록 DB로 폴백한다. 폴백본은 늦을 수 있어
+            // [반영]은 이걸 받으면 반영을 거부한다 — 매번 실패해도 아무도 몰랐던 일(§12-2)이 없도록 ERROR.
+            log.error("[PlanSnapshot] 캐시 조회 실패로 DB 폴백. planId={}", planId, e);
+            return readFromDatabase(plan, Source.CACHE_FAILED_DATABASE);
         }
     }
 
@@ -112,7 +132,7 @@ public class PlanSnapshotReader {
             }
         }
 
-        return new PlanSnapshot(resolvePlanFrame(plan, cachedPlan), timetables, placeBlocks);
+        return new PlanSnapshot(resolvePlanFrame(plan, cachedPlan), timetables, placeBlocks, Source.CACHE);
     }
 
     /**
@@ -126,7 +146,7 @@ public class PlanSnapshotReader {
         return PlanFrameDetailDto.from(cachedPlan);
     }
 
-    private PlanSnapshot readFromDatabase(Plan plan) {
+    private PlanSnapshot readFromDatabase(Plan plan, Source source) {
         List<TimetableDetailDto> timetables =
                 timeTableRepository.findByPlanPlanIdOrderByDate(plan.getPlanId()).stream()
                         .map(TimetableDetailDto::from)
@@ -136,6 +156,6 @@ public class PlanSnapshotReader {
                         .map(TimetablePlaceBlockDetailDto::from)
                         .toList();
 
-        return new PlanSnapshot(PlanFrameDetailDto.from(plan), timetables, placeBlocks);
+        return new PlanSnapshot(PlanFrameDetailDto.from(plan), timetables, placeBlocks, source);
     }
 }

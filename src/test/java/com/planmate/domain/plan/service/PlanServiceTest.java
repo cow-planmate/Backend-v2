@@ -61,7 +61,7 @@ class PlanServiceTest {
                                List<TimetableDetailDto> timetables,
                                List<TimetablePlaceBlockDetailDto> placeBlocks) {
         given(planSnapshotReader.read(plan)).willReturn(new PlanSnapshotReader.PlanSnapshot(
-                PlanFrameDetailDto.from(plan), timetables, placeBlocks));
+                PlanFrameDetailDto.from(plan), timetables, placeBlocks, PlanSnapshotReader.Source.CACHE));
     }
 
     private Destination destination() {
