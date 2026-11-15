@@ -5,6 +5,7 @@ import com.planmate.domain.chatbot.dto.ChatbotApplyPlanDto;
 import com.planmate.domain.chatbot.dto.ChatbotApplyTimetableDto;
 import com.planmate.domain.plan.dto.TimetableDetailDto;
 import com.planmate.domain.plan.dto.TimetablePlaceBlockDetailDto;
+import com.planmate.domain.plan.service.PlanSnapshotReader;
 import com.planmate.domain.plan.service.PlanSnapshotReader.PlanSnapshot;
 import com.planmate.domain.timetable.enums.BlockCategory;
 import org.junit.jupiter.api.DisplayName;
@@ -51,7 +52,7 @@ class PlanReconcilerTest {
     }
 
     private PlanSnapshot snapshot(List<TimetableDetailDto> timetables, List<TimetablePlaceBlockDetailDto> blocks) {
-        return new PlanSnapshot(null, timetables, blocks);
+        return new PlanSnapshot(null, timetables, blocks, PlanSnapshotReader.Source.CACHE);
     }
 
     private ChatbotApplyPlanDto target(List<ChatbotApplyTimetableDto> timetables,

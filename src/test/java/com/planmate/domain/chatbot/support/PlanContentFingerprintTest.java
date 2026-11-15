@@ -6,6 +6,7 @@ import com.planmate.domain.plan.dto.GetCompletePlanResponse;
 import com.planmate.domain.plan.dto.PlanFrameDetailDto;
 import com.planmate.domain.plan.dto.TimetableDetailDto;
 import com.planmate.domain.plan.dto.TimetablePlaceBlockDetailDto;
+import com.planmate.domain.plan.service.PlanSnapshotReader;
 import com.planmate.domain.plan.service.PlanSnapshotReader.PlanSnapshot;
 import com.planmate.domain.timetable.enums.BlockCategory;
 import org.junit.jupiter.api.DisplayName;
@@ -62,10 +63,23 @@ class PlanContentFingerprintTest {
     void responseAndSnapshot_sameContent_sameHash() {
         GetCompletePlanResponse response =
                 new GetCompletePlanResponse(frame(), List.of(timetable()), List.of(block("경복궁")));
-        PlanSnapshot snapshot = new PlanSnapshot(frame(), List.of(timetable()), List.of(block("경복궁")));
+        PlanSnapshot snapshot = new PlanSnapshot(frame(), List.of(timetable()), List.of(block("경복궁")),
+                PlanSnapshotReader.Source.CACHE);
 
         assertThat(PlanContentFingerprint.of(objectMapper, response))
                 .isEqualTo(PlanContentFingerprint.of(objectMapper, snapshot));
+    }
+
+    @Test
+    @DisplayName("PlanSnapshot 의 source(어디서 읽었는지)는 지문에 들어가지 않는다")
+    void snapshotSource_notPartOfHash() {
+        PlanSnapshot fromCache = new PlanSnapshot(frame(), List.of(timetable()), List.of(block("경복궁")),
+                PlanSnapshotReader.Source.CACHE);
+        PlanSnapshot fromDatabase = new PlanSnapshot(frame(), List.of(timetable()), List.of(block("경복궁")),
+                PlanSnapshotReader.Source.DATABASE);
+
+        assertThat(PlanContentFingerprint.of(objectMapper, fromCache))
+                .isEqualTo(PlanContentFingerprint.of(objectMapper, fromDatabase));
     }
 
     @Test
