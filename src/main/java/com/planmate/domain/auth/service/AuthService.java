@@ -53,6 +53,7 @@ public class AuthService {
                 .nickname(user.getNickname())
                 .email(user.getEmail())
                 .role(user.getRole().name())
+                .profileImageUrl(user.getProfileImageUrl())
                 .build();
     }
 

@@ -11,6 +11,7 @@ public record LoginResponse(
         UUID userId,
         String nickname,
         String email,
-        String role
+        String role,
+        String profileImageUrl
 ) {
 }
