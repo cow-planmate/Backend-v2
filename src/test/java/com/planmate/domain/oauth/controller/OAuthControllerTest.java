@@ -5,6 +5,10 @@ import com.planmate.domain.auth.repository.RefreshTokenRedisRepository;
 import com.planmate.domain.oauth.dto.OAuthCompleteRequest;
 import com.planmate.domain.oauth.dto.OAuthExchangeRequest;
 import com.planmate.domain.oauth.dto.OAuthSignupCache;
+import com.planmate.domain.oauth.dto.OAuthUserProfile;
+import com.planmate.domain.oauth.dto.google.GoogleIdTokenLoginRequest;
+import com.planmate.domain.oauth.service.provider.GoogleIdTokenProfileVerifier;
+import com.planmate.common.exception.domain.OAuthInvalidIdTokenException;
 import com.planmate.domain.oauth.dto.google.GoogleTokenResponse;
 import com.planmate.domain.oauth.dto.google.GoogleUserResponse;
 import com.planmate.domain.oauth.dto.kakao.KakaoTokenResponse;
@@ -82,6 +86,9 @@ class OAuthControllerTest {
     // 실제 카카오/구글/네이버 서버로 나가는 외부 HTTP 호출만 목킹 — 그 외(DB/Redis/JWT)는 전부 실제로 붙는다
     @MockitoBean
     private RestTemplate restTemplate;
+    // 앱 네이티브 로그인의 구글 서명 검증도 외부(구글 공개키) 의존이라 목킹
+    @MockitoBean
+    private GoogleIdTokenProfileVerifier googleIdTokenProfileVerifier;
 
     private String leftoverSignupId;
 
@@ -609,5 +616,97 @@ class OAuthControllerTest {
         assertThat(newUser.getProviderId()).isEqualTo(providerId);
         assertThat(newUser.getDeletedAt()).isNull();
         assertThat(newUser.getEmail()).isEqualTo(cache.email());
+    }
+
+    // ===================== 5) 앱 네이티브 구글 로그인 =====================
+
+    private String postGoogleIdToken(String idToken, org.springframework.test.web.servlet.ResultMatcher expectedStatus) throws Exception {
+        return mockMvc.perform(post("/api/oauth/google/id-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new GoogleIdTokenLoginRequest(idToken))))
+                .andExpect(expectedStatus)
+                .andReturn().getResponse().getContentAsString();
+    }
+
+    @Test
+    @DisplayName("ID 토큰 로그인 - 이미 가입된 구글 유저면 200 SUCCESS + 바로 토큰 발급(1회용 코드 없음)")
+    void googleIdToken_existingUser_returnsTokens() throws Exception {
+        User existing = userRepository.save(User.builder()
+                .provider(UserProvider.GOOGLE)
+                .providerId("google-native-" + UUID.randomUUID())
+                .email("native-it-" + UUID.randomUUID() + "@example.com")
+                .nickname("native" + UUID.randomUUID().toString().substring(0, 8))
+                .role(UserRole.USER)
+                .build());
+        given(googleIdTokenProfileVerifier.verify("id-token"))
+                .willReturn(new OAuthUserProfile(existing.getProviderId(), existing.getEmail(), "홍길동", null));
+
+        String body = postGoogleIdToken("id-token", status().isOk());
+
+        var json = objectMapper.readTree(body);
+        assertThat(json.get("status").asText()).isEqualTo("SUCCESS");
+        assertThat(json.get("login").get("userId").asText()).isEqualTo(existing.getUserId().toString());
+        assertThat(json.has("signupId")).isFalse();
+        String refreshToken = json.get("login").get("refreshToken").asText();
+        assertThat(refreshTokenRedisRepository.findUserId(refreshToken)).contains(existing.getUserId());
+    }
+
+    @Test
+    @DisplayName("ID 토큰 로그인 - 신규면 200 NEED_ADDITIONAL_INFO + 가입캐시 저장(이후 /complete)")
+    void googleIdToken_newUser_needAdditionalInfo() throws Exception {
+        String providerId = "google-native-" + UUID.randomUUID();
+        String email = "native-new-" + UUID.randomUUID() + "@example.com";
+        given(googleIdTokenProfileVerifier.verify("id-token"))
+                .willReturn(new OAuthUserProfile(providerId, email, "신규유저", null));
+
+        String body = postGoogleIdToken("id-token", status().isOk());
+
+        var json = objectMapper.readTree(body);
+        assertThat(json.get("status").asText()).isEqualTo("NEED_ADDITIONAL_INFO");
+        assertThat(json.get("needEmail").asBoolean()).isFalse();
+        assertThat(json.has("login")).isFalse();
+        leftoverSignupId = json.get("signupId").asText();
+
+        OAuthSignupCache cache = oAuthSignupRedisRepository.find(leftoverSignupId).orElseThrow();
+        assertThat(cache.provider()).isEqualTo(UserProvider.GOOGLE);
+        assertThat(cache.providerId()).isEqualTo(providerId);
+        assertThat(cache.email()).isEqualTo(email);
+        assertThat(cache.refreshToken()).isNull();
+    }
+
+    @Test
+    @DisplayName("ID 토큰 로그인 - 같은 이메일이 다른 방식으로 가입돼 있으면 409 OAUTH_005")
+    void googleIdToken_emailConflict() throws Exception {
+        User kakaoUser = saveActiveKakaoUser();
+        given(googleIdTokenProfileVerifier.verify("id-token"))
+                .willReturn(new OAuthUserProfile("google-native-" + UUID.randomUUID(), kakaoUser.getEmail(), "충돌", null));
+
+        mockMvc.perform(post("/api/oauth/google/id-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new GoogleIdTokenLoginRequest("id-token"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("OAUTH_005"));
+    }
+
+    @Test
+    @DisplayName("ID 토큰 로그인 - 검증 실패면 401 OAUTH_006")
+    void googleIdToken_invalidToken() throws Exception {
+        given(googleIdTokenProfileVerifier.verify("bad-token")).willThrow(new OAuthInvalidIdTokenException());
+
+        mockMvc.perform(post("/api/oauth/google/id-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new GoogleIdTokenLoginRequest("bad-token"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("OAUTH_006"));
+    }
+
+    @Test
+    @DisplayName("ID 토큰 로그인 - idToken이 빈 값이면 400 COMMON_001")
+    void googleIdToken_blank() throws Exception {
+        mockMvc.perform(post("/api/oauth/google/id-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new GoogleIdTokenLoginRequest(""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
     }
 }
