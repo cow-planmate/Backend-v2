@@ -159,13 +159,25 @@ class RegisterControllerTest {
     @Test
     @DisplayName("닉네임 중복확인 성공 - 200, 사용 가능")
     void verifyNickname_available() throws Exception {
-        NicknameVerificationRequest request = new NicknameVerificationRequest("nick-" + UUID.randomUUID());
+        NicknameVerificationRequest request = new NicknameVerificationRequest("nick-" + UUID.randomUUID().toString().substring(0, 8));
 
         mockMvc.perform(post("/api/auth/register/nickname/verify")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nicknameAvailable").value(true));
+    }
+
+    @Test
+    @DisplayName("닉네임 중복확인 검증 실패 - 20자 초과면 400, COMMON_001")
+    void verifyNickname_validationFailure_tooLong() throws Exception {
+        NicknameVerificationRequest request = new NicknameVerificationRequest("가".repeat(21));
+
+        mockMvc.perform(post("/api/auth/register/nickname/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
     }
 
     @Test
