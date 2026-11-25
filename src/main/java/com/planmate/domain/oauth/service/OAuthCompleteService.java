@@ -85,6 +85,7 @@ public class OAuthCompleteService {
                 .nickname(user.getNickname())
                 .email(user.getEmail())
                 .role(user.getRole().name())
+                .profileImageUrl(user.getProfileImageUrl())
                 .build();
     }
 }

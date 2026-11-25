@@ -64,6 +64,7 @@ class AuthServiceTest {
                 .email(EMAIL)
                 .password("encoded-hash")
                 .nickname("nick")
+                .profileImageUrl("https://s3.example/p.png")
                 .role(UserRole.USER)
                 .build();
     }
@@ -85,6 +86,7 @@ class AuthServiceTest {
         assertThat(response.nickname()).isEqualTo("nick");
         assertThat(response.email()).isEqualTo(EMAIL);
         assertThat(response.role()).isEqualTo("USER");
+        assertThat(response.profileImageUrl()).isEqualTo("https://s3.example/p.png");
         verify(refreshTokenRedisRepository).save(eq("refresh-token"), eq(userId), eq(Duration.ofDays(7)));
     }
 

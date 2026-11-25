@@ -75,6 +75,23 @@ public class OAuthLoginService {
 
         OAuthUserProfile profile = fetchersByProvider.get(provider).fetch(code, state);
 
+        OAuthLoginOutcome outcome = resolve(provider, profile);
+        if (outcome instanceof OAuthLoginOutcome.ExistingUser existing) {
+            return buildLoginCodeRedirect(oAuthLoginCodeRedisRepository.issue(existing.userId()));
+        }
+        if (outcome instanceof OAuthLoginOutcome.NeedAdditionalInfo need) {
+            return buildAdditionalInfoRedirect(need.signupId(), need.needEmail());
+        }
+        return buildFailRedirect();   // EmailConflict
+    }
+
+    /**
+     * 3. 프로필 → 기존 로그인 / 추가정보 필요 / 이메일 충돌 판정.
+     * 웹 콜백({@link #callback})과 앱 네이티브 로그인({@code OAuthNativeLoginService})이 같이 쓴다 —
+     * 결과를 리다이렉트로 돌려줄지 JSON으로 돌려줄지만 호출하는 쪽이 정한다.
+     */
+    @Transactional
+    public OAuthLoginOutcome resolve(OAuthProvider provider, OAuthUserProfile profile) {
         String email = profile.getEmail();
         boolean needEmail = (email == null || email.isBlank());
         String providerId = profile.getProviderId();
@@ -87,20 +104,19 @@ public class OAuthLoginService {
         if (existingUser.isPresent()) {
             User user = existingUser.get();
             // GOOGLE만 매 로그인마다 refresh_token을 다시 내려준다(prompt=consent) — 받자마자 즉시
-            // 암호화한다. null(KAKAO/NAVER, 또는 GOOGLE인데 이례적으로 안 내려온 경우)이면 기존 값을
-            // 건드리지 않는다 — 유효했던 이전 값을 이유 없이 지우지 않기 위해서다.
+            // 암호화한다. null(KAKAO/NAVER, GOOGLE 앱 네이티브 로그인, 또는 GOOGLE인데 이례적으로 안
+            // 내려온 경우)이면 기존 값을 건드리지 않는다 — 유효했던 이전 값을 이유 없이 지우지 않기 위해서다.
             // (04_기능/OAuth/C_SNS_연동해제.md 2-1절)
             if (profile.getRefreshToken() != null) {
                 user.changeSnsRefreshToken(snsRefreshTokenCipher.encrypt(profile.getRefreshToken()));
             }
-            String loginCode = oAuthLoginCodeRedisRepository.issue(user.getUserId());
-            return buildLoginCodeRedirect(loginCode);
+            return new OAuthLoginOutcome.ExistingUser(user.getUserId());
         }
 
         if (email != null) {
             Optional<User> conflicting = userRepository.findByEmailIgnoreCase(email);
             if (conflicting.isPresent() && conflicting.get().getProvider() != provider.toUserProvider()) {
-                return buildFailRedirect();
+                return new OAuthLoginOutcome.EmailConflict();
             }
         }
 
@@ -122,7 +138,7 @@ public class OAuthLoginService {
         );
         String signupId = oAuthSignupRedisRepository.save(cache);
 
-        return buildAdditionalInfoRedirect(signupId, needEmail);
+        return new OAuthLoginOutcome.NeedAdditionalInfo(signupId, needEmail);
     }
 
     /** 기존 SNS 유저 로그인 → loginCode redirect */

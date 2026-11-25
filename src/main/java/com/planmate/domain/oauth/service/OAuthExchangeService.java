@@ -43,6 +43,7 @@ public class OAuthExchangeService {
                 .nickname(user.getNickname())
                 .email(user.getEmail())
                 .role(user.getRole().name())
+                .profileImageUrl(user.getProfileImageUrl())
                 .build();
     }
 }

@@ -63,6 +63,10 @@ public enum ErrorCode {
     OAUTH_SIGNUP_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "OAUTH_002", "가입 세션이 만료되었거나 존재하지 않습니다."),
     OAUTH_EMAIL_REQUIRED(HttpStatus.BAD_REQUEST, "OAUTH_003", "이메일 정보가 필요합니다."),
     OAUTH_ALREADY_REGISTERED(HttpStatus.CONFLICT, "OAUTH_004", "이미 가입된 계정입니다."),
+    // 웹은 FAIL&reason=EMAIL_CONFLICT 리다이렉트로 알리던 것을 앱(JSON)용으로 옮긴 것
+    OAUTH_EMAIL_CONFLICT(HttpStatus.CONFLICT, "OAUTH_005", "다른 방식으로 가입된 이메일입니다."),
+    // AUTH_001(INVALID_TOKEN)과 분리 — 앱이 우리 액세스 토큰 만료로 오인해 재발급을 시도하지 않게
+    OAUTH_INVALID_ID_TOKEN(HttpStatus.UNAUTHORIZED, "OAUTH_006", "유효하지 않은 구글 ID 토큰입니다."),
 
     // 추천 장소
     // 키가 없으면 카카오가 401을 주는데, 그대로 두면 "검색이 안 된다"로만 보여 원인을 못 찾는다

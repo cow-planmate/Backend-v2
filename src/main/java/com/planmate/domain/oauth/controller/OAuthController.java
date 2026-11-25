@@ -5,10 +5,13 @@ import com.planmate.domain.auth.dto.LoginResponse;
 import com.planmate.domain.oauth.config.OAuthProperties;
 import com.planmate.domain.oauth.dto.OAuthCompleteRequest;
 import com.planmate.domain.oauth.dto.OAuthExchangeRequest;
+import com.planmate.domain.oauth.dto.google.GoogleIdTokenLoginRequest;
+import com.planmate.domain.oauth.dto.google.GoogleIdTokenLoginResponse;
 import com.planmate.domain.oauth.enums.OAuthProvider;
 import com.planmate.domain.oauth.service.OAuthCompleteService;
 import com.planmate.domain.oauth.service.OAuthExchangeService;
 import com.planmate.domain.oauth.service.OAuthLoginService;
+import com.planmate.domain.oauth.service.OAuthNativeLoginService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -43,6 +46,7 @@ public class OAuthController {
     private final OAuthLoginService oAuthLoginService;
     private final OAuthExchangeService oAuthExchangeService;
     private final OAuthCompleteService oAuthCompleteService;
+    private final OAuthNativeLoginService oAuthNativeLoginService;
     private final OAuthProperties oAuthProperties;
 
     // 1) SNS 로그인 시작
@@ -99,6 +103,12 @@ public class OAuthController {
     public ResponseEntity<LoginResponse> complete(@Valid @RequestBody OAuthCompleteRequest request) {
         LoginResponse response = oAuthCompleteService.complete(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    // 5) 앱 네이티브 구글 로그인 — 앱이 구글에서 받은 ID 토큰으로 바로 로그인/가입 판정(웹 흐름과 무관)
+    @PostMapping("/google/id-token")
+    public ResponseEntity<GoogleIdTokenLoginResponse> googleIdToken(@Valid @RequestBody GoogleIdTokenLoginRequest request) {
+        return ResponseEntity.ok(oAuthNativeLoginService.loginWithGoogleIdToken(request.idToken()));
     }
 
     // 진입 두 메서드에서만 이 헬퍼를 호출, exchange/complete(B그룹)는 건드리지 않음(GlobalExceptionHandler로 정상 흘러감)
